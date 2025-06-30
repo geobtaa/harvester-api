@@ -1,0 +1,5 @@
+name: ArcGIS Hubs Harvest
+type: arcgis
+hub_list_csv: data/arcHubs.csv
+output_metadata_csv: outputs/arcgis_hubs_metadata.csv
+output_links_csv: outputs/arcgis_hubs_links.csv

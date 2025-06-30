@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Metadata Harvester Admin</title>
+  <style>
+    body { font-family: sans-serif; margin: 2em; }
+    button { margin-left: 1em; }
+    #status { margin-top: 2em; color: green; }
+  </style>
+</head>
+<body>
+  <h1>Metadata Harvest Jobs</h1>
+  <ul id="job-list"></ul>
+
+  <div id="status"></div>
+
+  <script>
+    const apiBase = "";
+
+    async function fetchJobs() {
+      const res = await fetch(`${apiBase}/jobs`);
+      const jobs = await res.json();
+      const list = document.getElementById("job-list");
+      list.innerHTML = "";
+      jobs.forEach(job => {
+        const li = document.createElement("li");
+        li.textContent = `${job.name} `;
+        const btn = document.createElement("button");
+        btn.textContent = "Run";
+        btn.onclick = () => runJob(job.id);
+        li.appendChild(btn);
+        list.appendChild(li);
+      });
+    }
+
+    async function runJob(jobId) {
+      document.getElementById("status").textContent = `Running job ${jobId}...`;
+      try {
+        const res = await fetch(`${apiBase}/jobs/${jobId}/run`, { method: "POST" });
+        const result = await res.json();
+        document.getElementById("status").textContent = `✅ Job ${jobId} finished. Output: ${result.metadata_csv}`;
+      } catch (e) {
+        console.error(e);
+        document.getElementById("status").textContent = `❌ Error running job ${jobId}`;
+      }
+    }
+
+    fetchJobs();
+  </script>
+</body>
+</html>
