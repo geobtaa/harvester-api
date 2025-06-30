@@ -41,3 +41,30 @@ This is an **early proof of concept** to demonstrate the integration of our meta
 - utils/         # Shared utilities
 - main.py        # FastAPI app entry point
 ```
+
+## Setup instructions
+
+1. Clone the repository and change into this directory
+2. Install dependencies with: `pip install -r requirements.txt`
+3. Start the FastAPI Server: `uvicorn main:app --reload`
+4. Review the API documentation (Swagger UI) at http://localhost:8000/docs
+5. For a list of runnable jobs, go to http://localhost:8000/
+
+
+**Notes:**
+
+* The --reload flag automatically restarts the server when you edit code.
+* Jobs are configured in YAML files inside the jobs/ directory.
+* Outputs from harvests will be saved in the outputs/ folder.
+
+
+## Adding jobs
+
+To create new harvesters, here are the basic steps:
+
+1. Add a new Python file in the `extractors/` directory
+2. Create a job config YAML in `jobs/`
+3. In `routers/jobs.py`, update the run endpoint for the new extractor type
+4. Test the new harvester
+
+*More details tbd*
