@@ -4,9 +4,6 @@ from extractors.base import BaseExtractor
 
 class ArcGISExtractor(BaseExtractor):
     def fetch(self):
-        """
-        Read the hub list and fetch raw JSON metadata.
-        """
         hub_file = self.job_config["hub_list_csv"]
         all_records = []
 
@@ -34,16 +31,15 @@ class ArcGISExtractor(BaseExtractor):
         return all_records
 
     def normalize(self, fetched_records) -> list[dict]:
-        """
-        Minimal normalization: just pull dataset titles and hub IDs.
-        """
         normalized = []
         for record in fetched_records:
             raw_datasets = record["raw_data"].get("dataset", [])
             for ds in raw_datasets:
+                dataset_id = ds.get("identifier", "")
                 normalized.append({
-                    "ID": record["hub_id"],
-                    "Title": ds.get("title", "Untitled")
+                    "Code": record["hub_id"],
+                    "ID": dataset_id,
+                    "Title": ds.get("title", "Untitled"),
                 })
-
         return normalized
+

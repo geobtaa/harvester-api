@@ -3,7 +3,7 @@ import os
 import yaml
 from utils.file_io import load_local_schema, write_csv
 from extractors.arcgis import ArcGISExtractor  # import your extractor
-# Later, you’ll build a registry so you don’t hardcode each extractor
+import time
 
 router = APIRouter()
 
@@ -58,10 +58,14 @@ async def run_job(job_id: str):
     normalized_records = extractor.normalize(fetched_records)
 
     # Write the normalized metadata CSV
-    metadata_csv_path = job_config["output_metadata_csv"]
-    write_csv(normalized_records, metadata_csv_path)
+    
+    # Prepend date to output path
+    today = time.strftime("%Y-%m-%d")
+    orig_output_path = job_config["output_metadata_csv"]
+    dated_output_path = f"outputs/{today}_{os.path.basename(orig_output_path)}"
 
-    # TODO: For ArcGIS, you have link fields that need a second CSV
-    # Here you can reuse your logic from the original script to extract links
+    write_csv(normalized_records, dated_output_path)
 
-    return {"status": "completed", "metadata_csv": metadata_csv_path}
+    # TODO: link fields that need a second CSV
+
+    return {"status": "completed", "metadata_csv": dated_output_path}
