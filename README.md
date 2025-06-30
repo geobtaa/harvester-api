@@ -18,13 +18,13 @@ This repository contains the **early framework** for a new, API-driven metadata 
 
 ---
 
-## ⚙Status
+## Status
 
 This is an **early proof of concept** to demonstrate the integration of our metadata harvesting workflows with a modern API stack. Functionality is limited but lays the foundation for future enhancements, including:
 
 - Adding more extractor types (e.g., CKAN, Socrata)  
 - Incorporating schema validation and enrichment  
-- Integrating with our upcoming metadata editor  
+- Integrating with a metadata editor  
 
 ---
 
