@@ -30,12 +30,14 @@ This is an **early proof of concept** to demonstrate the integration of our meta
 
 ## Directory Overview
 
-data/          # Input files (e.g., ArcGIS Hub lists)
-extractors/    # Extractor modules (ArcGIS implemented)
-jobs/          # YAML configs for each harvesting job
-outputs/       # Harvested metadata CSV outputs
-routers/       # FastAPI endpoints
-schemas/       # Canonical metadata schema
-static/        # Admin web UI
-utils/         # Shared utilities
-main.py        # FastAPI app entry point
+```
+- data/          # Input files (e.g., ArcGIS Hub lists)
+- extractors/    # Extractor modules (ArcGIS implemented)
+- jobs/          # YAML configs for each harvesting job
+- outputs/       # Harvested metadata CSV outputs
+- routers/       # FastAPI endpoints
+- schemas/       # Canonical metadata schema
+- static/        # Admin web UI
+- utils/         # Shared utilities
+- main.py        # FastAPI app entry point
+```
