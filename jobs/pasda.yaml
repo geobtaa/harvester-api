@@ -1,0 +1,6 @@
+name: pasda
+type: pasda
+input_html: data/pasda-search.html
+output_metadata_csv: outputs/pasda_metadata.csv
+output_links_csv: outputs/pasda_links.csv
+

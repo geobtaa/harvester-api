@@ -1,9 +1,11 @@
 from fastapi import APIRouter, HTTPException
 import os
 import yaml
-from utils.file_io import load_local_schema, write_csv
-from extractors.arcgis import ArcGISExtractor  # import your extractor
 import time
+
+from utils.file_io import load_local_schema, write_csv
+from extractors.arcgis import ArcGISExtractor
+from extractors.pasda import PasdaExtractor
 
 router = APIRouter()
 
@@ -12,19 +14,15 @@ async def list_jobs():
     """
     List available jobs by scanning the jobs/ folder.
     """
-    job_files = [f for f in os.listdir("jobs") if f.endswith(".yaml")]
+    job_files = sorted(f for f in os.listdir("jobs") if f.endswith(".yaml"))
     jobs = []
-
-    for i, filename in enumerate(sorted(job_files), start=1):
+    for filename in job_files:
         job_id = os.path.splitext(filename)[0]
-        # Optional: load the job name from the YAML if you want more details
-        with open(os.path.join("jobs", filename), "r", encoding="utf-8") as f:
-            job_config = yaml.safe_load(f)
+        config = yaml.safe_load(open(os.path.join("jobs", filename), encoding="utf-8"))
         jobs.append({
             "id": job_id,
-            "name": job_config.get("name", "Unnamed job")
+            "name": config.get("name", job_id)
         })
-
     return jobs
 
 @router.post("/jobs/{job_id}/run")
@@ -32,40 +30,41 @@ async def run_job(job_id: str):
     """
     Run a harvesting job by ID.
     """
-    job_config_path = f"jobs/{job_id}.yaml"
+    config_path = os.path.join("jobs", f"{job_id}.yaml")
+    if not os.path.exists(config_path):
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
-    if not os.path.exists(job_config_path):
-        raise HTTPException(status_code=404, detail=f"Job config {job_id} not found")
-
-    # Load the job config YAML
-    with open(job_config_path, "r", encoding="utf-8") as f:
-        job_config = yaml.safe_load(f)
-
-    # Load your canonical schema
+    # Load job config & schema
+    job_cfg = yaml.safe_load(open(config_path, encoding="utf-8"))
     schema = load_local_schema()
 
-    # Choose the extractor based on job_config["type"]
-    extractor_type = job_config.get("type")
+    # Instantiate the right extractor
+    extractor_type = job_cfg.get("type")
     if extractor_type == "arcgis":
-        extractor = ArcGISExtractor(job_config, schema)
+        extractor = ArcGISExtractor(job_cfg, schema)
+    elif extractor_type == "pasda":
+        extractor = PasdaExtractor(job_cfg, schema)
     else:
-        raise HTTPException(status_code=400, detail=f"Unsupported extractor type: {extractor_type}")
+        raise HTTPException(status_code=400, detail=f"Unsupported extractor type '{extractor_type}'")
 
-    # Fetch raw data from source
-    fetched_records = extractor.fetch()
-
-    # Normalize records to your local schema
-    normalized_records = extractor.normalize(fetched_records)
-
-    # Write the normalized metadata CSV
-    
-    # Prepend date to output path
+    results = {}
     today = time.strftime("%Y-%m-%d")
-    orig_output_path = job_config["output_metadata_csv"]
-    dated_output_path = f"outputs/{today}_{os.path.basename(orig_output_path)}"
 
-    write_csv(normalized_records, dated_output_path)
+    # 1) Metadata CSV
+    records = extractor.fetch()
+    normalized = extractor.normalize(records)
+    meta_out = job_cfg["output_metadata_csv"]
+    dated_meta = os.path.join("outputs", f"{today}_{os.path.basename(meta_out)}")
+    write_csv(normalized, dated_meta)
+    results["metadata_csv"] = dated_meta
 
-    # TODO: link fields that need a second CSV
+    # 2) Links CSV (if supported)
+    links_cfg = job_cfg.get("output_links_csv")
+    if links_cfg and hasattr(extractor, "fetch_links") and hasattr(extractor, "normalize_links"):
+        raw_links = extractor.fetch_links(records)
+        norm_links = extractor.normalize_links(raw_links)
+        dated_links = os.path.join("outputs", f"{today}_{os.path.basename(links_cfg)}")
+        write_csv(norm_links, dated_links)
+        results["links_csv"] = dated_links
 
-    return {"status": "completed", "metadata_csv": dated_output_path}
+    return {"status": "completed", **results}
