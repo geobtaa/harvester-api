@@ -28,3 +28,20 @@ def load_field_order_from_schemas(
     return field_order + link_vars
 
 FIELD_ORDER = load_field_order_from_schemas()
+
+def load_primary_field_order(schema_path="schemas/geobtaa_schema.yaml") -> list:
+    """
+    Loads only the canonical metadata field order (excludes distribution fields).
+    """
+    with open(schema_path, "r", encoding="utf-8") as f:
+        schema = yaml.safe_load(f)
+
+    field_order = schema.get("primaryKey", [])
+    for field in schema.get("fields", []):
+        name = field.get("name")
+        if name and name not in field_order:
+            field_order.append(name)
+    return field_order
+
+PRIMARY_FIELD_ORDER = load_primary_field_order()
+

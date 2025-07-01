@@ -2,8 +2,10 @@ from fastapi import APIRouter, HTTPException
 import os
 import yaml
 import time
+import pandas as pd
 
 from utils.file_io import load_local_schema, write_csv
+from utils.constants import PRIMARY_FIELD_ORDER
 from extractors.arcgis import ArcGISExtractor
 from extractors.pasda import PasdaExtractor
 
@@ -56,6 +58,16 @@ async def run_job(job_id: str):
     primary_out = job_cfg["output_primary_csv"]
     dated_primary = os.path.join("outputs", f"{today}_{os.path.basename(primary_out)}")
     write_csv(normalized_records, dated_primary)
+    results["primary_csv"] = dated_primary
+    import pandas as pd #why does this need to go here and not the top
+    normalized_df = pd.DataFrame(normalized_records)
+    
+    # 1) PRIMARY CSV: reorder with primary schema fields only
+    primary_df = normalized_df.reindex(columns=[col for col in PRIMARY_FIELD_ORDER if col in normalized_df.columns])
+
+    primary_out = job_cfg["output_primary_csv"]
+    dated_primary = os.path.join("outputs", f"{today}_{os.path.basename(primary_out)}")
+    primary_df.to_csv(dated_primary, index=False)
     results["primary_csv"] = dated_primary
 
 # 2) Distributions CSV (if configured)
