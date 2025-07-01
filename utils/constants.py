@@ -1,23 +1,30 @@
-# utils/constants.py
-
 import yaml
-import os
 
-def load_field_order_from_schema(schema_path="schemas/geobtaa_schema.yaml") -> list:
+def load_field_order_from_schemas(
+    primary_schema_path="schemas/geobtaa_schema.yaml",
+    dist_schema_path="schemas/distribution_types.yaml",
+) -> list:
     """
-    Loads your canonical field order from geobtaa_schema.yaml
+    Loads canonical field order from both the main geobtaa_schema.yaml and distribution_types.yaml.
+    Returns a combined FIELD_ORDER list.
     """
-    with open(schema_path, "r", encoding="utf-8") as f:
-        schema = yaml.safe_load(f)
+    # Load primary schema
+    with open(primary_schema_path, "r", encoding="utf-8") as f:
+        primary_schema = yaml.safe_load(f)
 
-    # Always include primary keys first
-    field_order = schema.get("primaryKey", [])
-    # Then append each defined field in order
-    for field in schema.get("fields", []):
-        name = field.get("name")
-        if name and name not in field_order:
-            field_order.append(name)
-    return field_order
+    field_order = primary_schema.get("primaryKey", []) + [
+        f["name"] for f in primary_schema.get("fields", []) if "name" in f
+    ]
 
-# You can expose it as a constant so other modules can just import FIELD_ORDER:
-FIELD_ORDER = load_field_order_from_schema()
+    # Load distribution schema
+    with open(dist_schema_path, "r", encoding="utf-8") as f:
+        dist_schema = yaml.safe_load(f)
+
+    link_vars = []
+    for dist in dist_schema.get("distribution_types", []):
+        link_vars.extend(dist.get("variables", []))
+
+    # Combine: primary fields first, then harvested link fields
+    return field_order + link_vars
+
+FIELD_ORDER = load_field_order_from_schemas()

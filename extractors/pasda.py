@@ -5,6 +5,9 @@ import pandas as pd
 import re
 from bs4 import BeautifulSoup
 from utils.constants import FIELD_ORDER
+from utils.distribution_writer import build_secondary_table, load_distribution_types
+
+import yaml
 
 class PasdaExtractor:
     def __init__(self, config, schema):
@@ -15,6 +18,14 @@ class PasdaExtractor:
             locations = json.load(f)
         self.counties_in_pennsylvania = locations["counties_in_pennsylvania"]
         self.cities_in_pennsylvania = locations["cities_in_pennsylvania"]
+        self.distribution_types = load_distribution_types()
+        
+    def load_distribution_types(yaml_path="schemas/distribution_types.yaml"):
+        with open(yaml_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+    # Create a lookup dictionary: key → {name, reference_uri}
+            return {item["key"]: {"name": item["name"], "reference_uri": item["reference_uri"]}
+                for item in config.get("distribution_types", [])}
 
     def fetch(self):
         html_path = self.config["input_html"]
@@ -29,21 +40,18 @@ class PasdaExtractor:
                 .pipe(self.transform_titles)
                 .pipe(self.cleanup_and_reorder))
         return df.to_dict(orient='records')
+        
+    
 
-    def fetch_links(self, raw_html):
-        df = self.parse_pasda_html(raw_html)
-        links = []
-        for _, row in df.iterrows():
-            for field in ['full_layer_description', 'download', 'metadata_html']:
-                url = row.get(field)
-                if url:
-                    links.append({
-                        'friendlier_id': row['ID'],
-                        'reference_type': field,
-                        'distribution_url': url,
-                        'label': row.get('Format', '') if field == 'download' else ''
-                    })
-        return links
+
+    def generate_secondary_table(self, normalized_df):
+        """
+        Generates the secondary distribution table aligned with distribution_types.yaml.
+        """
+        distribution_types = load_distribution_types()
+        secondary_df = build_secondary_table(normalized_df, distribution_types)
+        return secondary_df
+        
 
     def normalize_links(self, raw_links):
         return raw_links
@@ -67,9 +75,9 @@ class PasdaExtractor:
                 'Date Issued': date_issued,
                 'Alternative Title': title,
                 'Description': description,
-                'metadata_html': metadata_link,
+                'html': metadata_link,
                 'download': download_link,
-                'full_layer_description': landing_page,
+                'information': landing_page,
                 'ID': identifier
             })
         return pd.DataFrame(rows)
@@ -87,16 +95,16 @@ class PasdaExtractor:
 
     def add_default_values(self, df):
         today = time.strftime('%Y-%m-%d')
-        defaults = {'Code': '08a-01', 'Access Rights': 'Public', 'Accrual Method': 'HTML', 'Date Accessioned': today, 'Language': 'eng', 'Is Part Of': '08a-01', 'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a', 'Provider': 'Pennsylvania Spatial Data Access (PASDA)', 'Identifier': df['full_layer_description'], 'Format': 'File', 'Resource Class': 'Datasets'}
+        defaults = {'Code': '08a-01', 'Access Rights': 'Public', 'Accrual Method': 'HTML', 'Date Accessioned': today, 'Language': 'eng', 'Is Part Of': '08a-01', 'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a', 'Provider': 'Pennsylvania Spatial Data Access (PASDA)', 'Identifier': df['information'], 'Format': 'File', 'Resource Class': 'Datasets'}
         for col, val in defaults.items():
             df[col] = val
         return df
 
-    def apply_title_transformation(self, df):
-        df['Title'] = df.apply(self.generate_transformed_title, axis=1)
+    def transform_titles(self, df):
+        df['Title'] = df.apply(self.transform_title, axis=1)
         return df
 
-    def generate_transformed_title(self, row):
+    def transform_title(self, row):
         alt_title = row['Alternative Title']
         # Replace county names
         for county in self.counties_in_pennsylvania:

@@ -39,7 +39,7 @@
       try {
         const res = await fetch(`${apiBase}/jobs/${jobId}/run`, { method: "POST" });
         const result = await res.json();
-        document.getElementById("status").textContent = `✅ Job ${jobId} finished. Output: ${result.metadata_csv}`;
+        document.getElementById("status").textContent = `✅ Job ${jobId} finished. Outputs: ${result.primary_csv} and ${result.distributions_csv}`;
       } catch (e) {
         console.error(e);
         document.getElementById("status").textContent = `❌ Error running job ${jobId}`;

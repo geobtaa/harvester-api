@@ -50,21 +50,23 @@ async def run_job(job_id: str):
     results = {}
     today = time.strftime("%Y-%m-%d")
 
-    # 1) Metadata CSV
+    # 1) Primary metadata CSV
     records = extractor.fetch()
-    normalized = extractor.normalize(records)
-    meta_out = job_cfg["output_metadata_csv"]
-    dated_meta = os.path.join("outputs", f"{today}_{os.path.basename(meta_out)}")
-    write_csv(normalized, dated_meta)
-    results["metadata_csv"] = dated_meta
+    normalized_records = extractor.normalize(records)
+    primary_out = job_cfg["output_primary_csv"]
+    dated_primary = os.path.join("outputs", f"{today}_{os.path.basename(primary_out)}")
+    write_csv(normalized_records, dated_primary)
+    results["primary_csv"] = dated_primary
 
-    # 2) Links CSV (if supported)
-    links_cfg = job_cfg.get("output_links_csv")
-    if links_cfg and hasattr(extractor, "fetch_links") and hasattr(extractor, "normalize_links"):
-        raw_links = extractor.fetch_links(records)
-        norm_links = extractor.normalize_links(raw_links)
-        dated_links = os.path.join("outputs", f"{today}_{os.path.basename(links_cfg)}")
-        write_csv(norm_links, dated_links)
-        results["links_csv"] = dated_links
+# 2) Distributions CSV (if configured)
+    distributions_cfg = job_cfg.get("output_distributions_csv")
+    if distributions_cfg:
+        import pandas as pd
+        normalized_df = pd.DataFrame(normalized_records)
+        distributions_df = extractor.generate_secondary_table(normalized_df)
+        dated_distributions = os.path.join("outputs", f"{today}_{os.path.basename(distributions_cfg)}")
+        distributions_df.to_csv(dated_distributions, index=False)
+        results["distributions_csv"] = dated_distributions
 
     return {"status": "completed", **results}
+
