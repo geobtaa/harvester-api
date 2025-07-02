@@ -1,31 +1,62 @@
+# Standard library
 import os
 import time
-import json
-import pandas as pd
 import re
-from bs4 import BeautifulSoup
-from utils.constants import FIELD_ORDER
-from utils.distribution_writer import build_secondary_table, load_distribution_types
-
+import csv
+import json
 import yaml
 
-class PasdaExtractor:
+
+# Third-party
+import requests
+import pandas as pd
+from bs4 import BeautifulSoup
+
+
+# Project-specific
+from utils.constants import FIELD_ORDER, PRIMARY_FIELD_ORDER
+from utils.distribution_writer import load_distribution_types, build_secondary_table, generate_secondary_table
+from extractors.base import BaseExtractor
+
+
+
+class PasdaExtractor(BaseExtractor):
     def __init__(self, config, schema):
+        # Initialize the base extractor, if needed
+        super().__init__(config, schema)
+
         self.config = config
         self.schema = schema
-        locations_path = self.config.get("locations_json", "data/locations.json")
-        with open(locations_path, "r", encoding="utf-8") as f:
-            locations = json.load(f)
+        self.distribution_types = load_distribution_types()
+
+        # ---------------------------------------------------------------------
+        # Load supporting location data for place name normalization.
+        #
+        # This JSON file should include:
+        # - "counties_in_pennsylvania": list of county names
+        # - "cities_in_pennsylvania": list of city names
+        #
+        # These lists are used to standardize and format spatial coverage
+        # information during metadata extraction.
+        #
+        # The path can be set in the config dictionary under the "locations_json"
+        # key; otherwise, it defaults to "data/locations.json".
+        # ---------------------------------------------------------------------
+        default_locations_path = os.path.join("data", "locations.json")
+        locations_path = self.config.get("locations_json", default_locations_path)
+
+        try:
+            with open(locations_path, "r", encoding="utf-8") as f:
+                locations = json.load(f)
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Locations JSON not found: {locations_path}") from e
+
+        # Validate required keys
+#         if "counties_in_pennsylvania" not in locations or "cities_in_pennsylvania" not in locations:
+#             raise ValueError(f"Missing expected keys in locations JSON: {locations_path}")
+
         self.counties_in_pennsylvania = locations["counties_in_pennsylvania"]
         self.cities_in_pennsylvania = locations["cities_in_pennsylvania"]
-        self.distribution_types = load_distribution_types()
-        
-    def load_distribution_types(yaml_path="schemas/distribution_types.yaml"):
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-    # Create a lookup dictionary: key → {name, reference_uri}
-            return {item["key"]: {"name": item["name"], "reference_uri": item["reference_uri"]}
-                for item in config.get("distribution_types", [])}
 
     def fetch(self):
         html_path = self.config["input_html"]
@@ -34,24 +65,19 @@ class PasdaExtractor:
 
     def normalize(self, raw_html):
         df = self.parse_pasda_html(raw_html)
-        df = (df.pipe(self.drop_federal)
-                .pipe(self.format_date_ranges)
-                .pipe(self.add_default_values)
-                .pipe(self.transform_titles)
-                .pipe(self.cleanup_and_reorder))
-        return df.to_dict(orient='records')
+        df = (
+            df.pipe(self.drop_federal)
+              .pipe(self.format_date_ranges)
+              .pipe(self.add_default_values)
+              .pipe(self.transform_titles)
+              .pipe(self.cleanup_and_reorder)
+        )
         
-    
-
-
-    def generate_secondary_table(self, normalized_df):
-        """
-        Generates the secondary distribution table aligned with distribution_types.yaml.
-        """
-        distribution_types = load_distribution_types()
-        secondary_df = build_secondary_table(normalized_df, distribution_types)
-        return secondary_df
+        primary_records = df.to_dict(orient='records')
+        secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
         
+        return primary_records, secondary_df.to_dict(orient='records')
+
 
     def normalize_links(self, raw_links):
         return raw_links
@@ -95,10 +121,28 @@ class PasdaExtractor:
 
     def add_default_values(self, df):
         today = time.strftime('%Y-%m-%d')
-        defaults = {'Code': '08a-01', 'Access Rights': 'Public', 'Accrual Method': 'HTML', 'Date Accessioned': today, 'Language': 'eng', 'Is Part Of': '08a-01', 'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a', 'Provider': 'Pennsylvania Spatial Data Access (PASDA)', 'Identifier': df['information'], 'Format': 'File', 'Resource Class': 'Datasets'}
+    
+        # Assign Identifier element-wise
+        df['Identifier'] = df['information']
+    
+        # Then set the rest as scalar values
+        defaults = {
+            'Code': '08a-01',
+            'Access Rights': 'Public',
+            'Accrual Method': 'HTML',
+            'Date Accessioned': today,
+            'Language': 'eng',
+            'Is Part Of': '08a-01',
+            'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a',
+            'Provider': 'Pennsylvania Spatial Data Access (PASDA)',
+            'Format': 'File',
+            'Resource Class': 'Datasets'
+        }
         for col, val in defaults.items():
             df[col] = val
+    
         return df
+
 
     def transform_titles(self, df):
         df['Title'] = df.apply(self.transform_title, axis=1)
@@ -143,9 +187,3 @@ class PasdaExtractor:
         alt_title += f" {{{row['Date Issued']}}}"
 
         return alt_title
-
-
-    def cleanup_and_reorder(self, df):
-        df = df.applymap(lambda x: x.strip('|- ') if isinstance(x, str) else x)
-        cols = [c for c in FIELD_ORDER if c in df.columns]
-        return df.reindex(columns=cols)
