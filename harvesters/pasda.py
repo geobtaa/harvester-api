@@ -154,7 +154,8 @@ class PasdaHarvester(BaseHarvester):
             'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a',
             'Provider': 'Pennsylvania Spatial Data Access (PASDA)',
             'Format': 'File',
-            'Resource Class': 'Datasets'
+            'Resource Class': 'Datasets',
+            'Publication State': 'published'
         }
         for col, val in defaults.items():
             df[col] = val
