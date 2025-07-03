@@ -2,46 +2,31 @@
 import os
 import time
 import re
-import csv
 import json
 import yaml
 
-
 # Third-party
-import requests
 import pandas as pd
 from bs4 import BeautifulSoup
 
-
 # Project-specific
-from utils.constants import FIELD_ORDER, PRIMARY_FIELD_ORDER
-from utils.distribution_writer import load_distribution_types, build_secondary_table, generate_secondary_table
+from utils.distribution_writer import load_distribution_types, generate_secondary_table
 from extractors.base import BaseExtractor
 
 
-
 class PasdaExtractor(BaseExtractor):
+    """
+    Extractor for PASDA HTML datasets. Fetches local or remote HTML,
+    parses dataset entries, normalizes metadata, and writes primary
+    and secondary CSV outputs.
+    """
+
     def __init__(self, config, schema):
-        # Initialize the base extractor, if needed
         super().__init__(config, schema)
 
-        self.config = config
-        self.schema = schema
         self.distribution_types = load_distribution_types()
 
-        # ---------------------------------------------------------------------
-        # Load supporting location data for place name normalization.
-        #
-        # This JSON file should include:
-        # - "counties_in_pennsylvania": list of county names
-        # - "cities_in_pennsylvania": list of city names
-        #
-        # These lists are used to standardize and format spatial coverage
-        # information during metadata extraction.
-        #
-        # The path can be set in the config dictionary under the "locations_json"
-        # key; otherwise, it defaults to "data/locations.json".
-        # ---------------------------------------------------------------------
+        # Load supporting location data (for place name normalization)
         default_locations_path = os.path.join("data", "locations.json")
         locations_path = self.config.get("locations_json", default_locations_path)
 
@@ -51,19 +36,25 @@ class PasdaExtractor(BaseExtractor):
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Locations JSON not found: {locations_path}") from e
 
-        # Validate required keys
-#         if "counties_in_pennsylvania" not in locations or "cities_in_pennsylvania" not in locations:
-#             raise ValueError(f"Missing expected keys in locations JSON: {locations_path}")
+        if "counties_in_pennsylvania" not in locations or "cities_in_pennsylvania" not in locations:
+            raise ValueError(f"Missing expected keys in locations JSON: {locations_path}")
 
         self.counties_in_pennsylvania = locations["counties_in_pennsylvania"]
         self.cities_in_pennsylvania = locations["cities_in_pennsylvania"]
 
     def fetch(self):
+        """
+        Read PASDA HTML from a local file defined in the job config.
+        """
         html_path = self.config["input_html"]
         with open(html_path, 'r', encoding='utf-8') as f:
             return f.read()
 
     def normalize(self, raw_html):
+        """
+        Parse PASDA HTML into records, clean, and transform titles.
+        Returns primary and secondary records as lists of dicts.
+        """
         df = self.parse_pasda_html(raw_html)
         df = (
             df.pipe(self.drop_federal)
@@ -74,13 +65,26 @@ class PasdaExtractor(BaseExtractor):
         )
         
         primary_records = df.to_dict(orient='records')
+        print(f"[DEBUG] First primary record: {primary_records[0] if primary_records else 'No records!'}")
+
+        print(f"[DEBUG] Generating secondary table from {len(primary_records)} primary records")
         secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
-        
+        print(f"[DEBUG] Secondary dataframe rows: {len(secondary_df)}")
         return primary_records, secondary_df.to_dict(orient='records')
 
 
-    def normalize_links(self, raw_links):
-        return raw_links
+    def extract(self):
+        """
+        Full workflow: fetch data, normalize it, and write outputs.
+        Returns dict of generated file paths.
+        """
+        print("[PASDA] Fetching HTML...")
+        raw_html = self.fetch()
+        print("[PASDA] Normalizing data...")
+        primary, secondary = self.normalize(raw_html)
+        results = self.write_outputs(primary, secondary)
+        print(f"[PASDA] Completed extraction: {results}")
+        return results
 
     def parse_pasda_html(self, html_content):
         soup = BeautifulSoup(html_content, 'html.parser')
@@ -95,7 +99,7 @@ class PasdaExtractor(BaseExtractor):
             dl_tag = entry.parent.parent.find('a', string='Download')
             download_link = f"https://www.pasda.psu.edu/uci/{dl_tag['href']}" if dl_tag else ''
             landing_page = f"https://www.pasda.psu.edu/uci/{entry['href']}"
-            identifier = 'pasda-' + landing_page.rsplit('=',1)[-1]
+            identifier = 'pasda-' + landing_page.rsplit('=', 1)[-1]
             rows.append({
                 'Creator': publisher,
                 'Date Issued': date_issued,
@@ -109,23 +113,25 @@ class PasdaExtractor(BaseExtractor):
         return pd.DataFrame(rows)
 
     def drop_federal(self, df):
-        federal = ["United States Army Corps of Engineers USACE", "U S Geological Survey", "U S Fish and Wildlife Service", "U S Environmental Protection Agency", "U S Department of Justice", "U S Department of Commerce", "U S Department of Agriculture", "U S Census Bureau", "National Weather Service NOAA NWS", "National Renewable Energy Laboratory NREL", "National Park Service", "National Geodetic Survey", "National Aeronautics and Space Administration NASA", "Federal Emergency Management Agency"]
+        federal = [
+            "United States Army Corps of Engineers USACE", "U S Geological Survey", "U S Fish and Wildlife Service",
+            "U S Environmental Protection Agency", "U S Department of Justice", "U S Department of Commerce",
+            "U S Department of Agriculture", "U S Census Bureau", "National Weather Service NOAA NWS",
+            "National Renewable Energy Laboratory NREL", "National Park Service", "National Geodetic Survey",
+            "National Aeronautics and Space Administration NASA", "Federal Emergency Management Agency"
+        ]
         return df[~df['Creator'].isin(federal)].reset_index(drop=True)
 
     def format_date_ranges(self, df):
         def make_range(s):
-            years = re.findall(r"(\\d{4})", s)
+            years = re.findall(r"(\d{4})", s)
             return f"{years[0]}-{years[-1]}" if years else s
         df['Date Range'] = df['Date Issued'].apply(make_range)
         return df
 
     def add_default_values(self, df):
         today = time.strftime('%Y-%m-%d')
-    
-        # Assign Identifier element-wise
         df['Identifier'] = df['information']
-    
-        # Then set the rest as scalar values
         defaults = {
             'Code': '08a-01',
             'Access Rights': 'Public',
@@ -140,9 +146,7 @@ class PasdaExtractor(BaseExtractor):
         }
         for col, val in defaults.items():
             df[col] = val
-    
         return df
-
 
     def transform_titles(self, df):
         df['Title'] = df.apply(self.transform_title, axis=1)
@@ -150,6 +154,7 @@ class PasdaExtractor(BaseExtractor):
 
     def transform_title(self, row):
         alt_title = row['Alternative Title']
+
         # Replace county names
         for county in self.counties_in_pennsylvania:
             if re.search(f"{county} County", alt_title, re.I):
@@ -158,12 +163,12 @@ class PasdaExtractor(BaseExtractor):
         else:
             # Replace city names
             for city in self.cities_in_pennsylvania:
-                if re.search(rf"\\b{city}\\b", alt_title, re.I):
-                    alt_title = re.sub(rf"\\b{city}\\b", f"[Pennsylvania--{city}]", alt_title, flags=re.I, count=1)
+                if re.search(rf"\b{city}\b", alt_title, re.I):
+                    alt_title = re.sub(rf"\b{city}\b", f"[Pennsylvania--{city}]", alt_title, flags=re.I, count=1)
                     break
             else:
                 # Replace generic PA mentions
-                alt_title = re.sub(r"\\b(PA|Pennsylvania)\\b", "[Pennsylvania]", alt_title, flags=re.I, count=1)
+                alt_title = re.sub(r"\b(PA|Pennsylvania)\b", "[Pennsylvania]", alt_title, flags=re.I, count=1)
 
         # Capture and move bracketed content
         bracket_content = re.findall(r'\[(.*?)\]', alt_title)
@@ -171,13 +176,13 @@ class PasdaExtractor(BaseExtractor):
             alt_title = re.sub(r'\[.*?\]', '', alt_title).strip()
             alt_title = f"{alt_title} [{bracket_content[0]}]"
 
-        # Clean up phrases with correctly escaped brackets
-        alt_title = re.sub(r"For\\s+\[", "[", alt_title, flags=re.I)
-        alt_title = re.sub(r"For The\\s+\[", "[", alt_title, flags=re.I)
-        alt_title = re.sub(r"For The City Of\\s+\[", "[", alt_title, flags=re.I)
+        # Clean up phrases
+        alt_title = re.sub(r"For\s+\[", "[", alt_title, flags=re.I)
+        alt_title = re.sub(r"For The\s+\[", "[", alt_title, flags=re.I)
+        alt_title = re.sub(r"For The City Of\s+\[", "[", alt_title, flags=re.I)
 
         # Remove leading/trailing dashes
-        alt_title = re.sub(r"^\\s*-\\s*|\\s*-\\s*(?=\[)", "", alt_title)
+        alt_title = re.sub(r"^\s*-\s*|\s*-\s*(?=\[)", "", alt_title)
 
         # Capitalize first letter
         if alt_title:
@@ -185,5 +190,20 @@ class PasdaExtractor(BaseExtractor):
 
         # Append Date Issued
         alt_title += f" {{{row['Date Issued']}}}"
-
         return alt_title
+
+
+def main():
+    """
+    Run PASDA extraction standalone for local testing.
+    """
+    config_path = "jobs/pasda.yaml"
+    schema_path = "schemas/geobtaa_schema.yaml"
+
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    extractor = PasdaExtractor(config, schema_path)
+    extractor.extract()
+
+

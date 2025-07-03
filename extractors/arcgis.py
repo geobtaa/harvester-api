@@ -10,7 +10,6 @@ from urllib.parse import urlparse, parse_qs
 # Third-party
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
 
 # Project-specific
 from utils.constants import FIELD_ORDER, PRIMARY_FIELD_ORDER
@@ -26,6 +25,9 @@ class ArcGISExtractor(BaseExtractor):
         self.distribution_types = load_distribution_types()
 
     def fetch(self):
+        """
+        Fetch raw data from a list of ArcGIS Hub URLs defined in a CSV.
+        """
         hub_file = self.config.get("hub_list_csv")
         records = []
         with open(hub_file, newline='', encoding='utf-8') as f:
@@ -38,7 +40,7 @@ class ArcGISExtractor(BaseExtractor):
                     resp.raise_for_status()
                     data = resp.json()
                 except Exception as e:
-                    print(f"Error fetching {hub_id}: {e}")
+                    print(f"[ArcGIS] Error fetching {hub_id}: {e}")
                     continue
                 records.append({
                     'hub_id': hub_id,
@@ -50,8 +52,11 @@ class ArcGISExtractor(BaseExtractor):
                     'raw_data': data
                 })
         return records
-
+        
     def normalize(self, fetched_records):
+        """
+        Flatten fetched ArcGIS records, parse fields, and return primary and secondary metadata.
+        """
         df = self.flatten_datasets(fetched_records)
         df = (
             df
@@ -74,7 +79,18 @@ class ArcGISExtractor(BaseExtractor):
         secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
         return primary_records, secondary_df.to_dict(orient='records')
 
-
+    def extract(self):
+        """
+        Full workflow: fetch data, normalize it, and write outputs.
+        Returns dict of generated file paths.
+        """
+        print("[ArcGIS] Fetching data from hubs...")
+        fetched = self.fetch()
+        print(f"[ArcGIS] Fetched {len(fetched)} hub records. Normalizing...")
+        primary, secondary = self.normalize(fetched)
+        results = self.write_outputs(primary, secondary)
+        print(f"[ArcGIS] Completed extraction: {results}")
+        return results
 
     def flatten_datasets(self, records):
         rows = []
@@ -293,5 +309,17 @@ class ArcGISExtractor(BaseExtractor):
         df['Alternative Title'] = df['alternative_title']
         return df
 
+def main():
+    """
+    Run ArcGIS extraction standalone for local testing.
+    """
+    config_path = "jobs/arcgis.yaml"
+    schema_path = "schemas/geobtaa_schema.yaml"
+
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    extractor = ArcGISExtractor(config, schema_path)
+    extractor.extract()
 
 

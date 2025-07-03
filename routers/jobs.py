@@ -1,13 +1,8 @@
 from fastapi import APIRouter, HTTPException
 import os
 import yaml
-import time
-import pandas as pd
 
-from utils.file_io import load_local_schema, write_csv
-from utils.distribution_writer import generate_secondary_table
-from utils.constants import PRIMARY_FIELD_ORDER
-# from extractors.base import load_local_schema
+from utils.file_io import load_local_schema
 from extractors.pasda import PasdaExtractor
 from extractors.arcgis import ArcGISExtractor
 
@@ -22,14 +17,14 @@ async def list_jobs():
     jobs = []
     for filename in job_files:
         job_id = os.path.splitext(filename)[0]
-        config = yaml.safe_load(open(os.path.join("jobs", filename), encoding="utf-8"))
+        config_path = os.path.join("jobs", filename)
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
         jobs.append({
             "id": job_id,
             "name": config.get("name", job_id)
         })
     return jobs
-
-
 
 @router.post("/jobs/{job_id}/run")
 async def run_job(job_id: str):
@@ -41,10 +36,10 @@ async def run_job(job_id: str):
     if not os.path.exists(config_path):
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
 
-    with open(config_path, encoding="utf-8") as cfg:
-        job_cfg = yaml.safe_load(cfg)
+    with open(config_path, encoding="utf-8") as f:
+        job_cfg = yaml.safe_load(f)
 
-    # Load schema and instantiate extractor
+    # Load schema and instantiate the correct extractor
     schema = load_local_schema()
     extractor_type = job_cfg.get("type")
 
@@ -58,36 +53,8 @@ async def run_job(job_id: str):
             detail=f"Unsupported extractor type '{extractor_type}'"
         )
 
-    # Fetch and normalize
-    fetched = extractor.fetch()
-    primary_records, secondary_records = extractor.normalize(fetched)
-
-    # Prepare outputs
-    today = time.strftime("%Y-%m-%d")
-    results = {}
-
-    # Primary metadata CSV
-    primary_df = pd.DataFrame(primary_records)
-    # Reorder to primary schema fields only
-    primary_df = primary_df.reindex(
-        columns=[c for c in PRIMARY_FIELD_ORDER if c in primary_df.columns]
-    )
-    primary_out = job_cfg["output_primary_csv"]
-    dated_primary = os.path.join(
-        "outputs", f"{today}_{os.path.basename(primary_out)}"
-    )
-    primary_df.to_csv(dated_primary, index=False)
-    results["primary_csv"] = dated_primary
-
-    # Distributions CSV (if configured)
-    dist_cfg = job_cfg.get("output_distributions_csv")
-    if dist_cfg:
-        secondary_df = pd.DataFrame(secondary_records)
-        dated_dist = os.path.join(
-            "outputs", f"{today}_{os.path.basename(dist_cfg)}"
-        )
-        secondary_df.to_csv(dated_dist, index=False)
-        results["distributions_csv"] = dated_dist
+    # Run the full extractor workflow (fetch, normalize, write outputs)
+    results = extractor.extract()
 
     return {"status": "completed", **results}
 
