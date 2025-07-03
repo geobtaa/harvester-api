@@ -48,6 +48,10 @@ class BaseHarvester:
         today = time.strftime("%Y-%m-%d")
         results = {}
 
+        # Ensure the outputs directory exists
+        output_dir = "outputs"
+        os.makedirs(output_dir, exist_ok=True)
+
         # Write primary CSV
         primary_out = self.config["output_primary_csv"]
         primary_filename = os.path.join("outputs", f"{today}_{os.path.basename(primary_out)}")
