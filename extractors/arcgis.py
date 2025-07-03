@@ -309,6 +309,7 @@ class ArcGISExtractor(BaseExtractor):
         df['Alternative Title'] = df['alternative_title']
         return df
 
+
 def main():
     """
     Run ArcGIS extraction standalone for local testing.
@@ -321,5 +322,3 @@ def main():
 
     extractor = ArcGISExtractor(config, schema_path)
     extractor.extract()
-
-
