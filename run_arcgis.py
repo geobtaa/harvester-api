@@ -1,3 +1,3 @@
-from extractors import arcgis
+from harvesters import arcgis
 
 arcgis.main()

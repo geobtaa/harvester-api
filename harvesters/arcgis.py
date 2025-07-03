@@ -12,13 +12,13 @@ import requests
 import pandas as pd
 
 # Project-specific
-from utils.constants import FIELD_ORDER, PRIMARY_FIELD_ORDER
+from utils.field_order import FIELD_ORDER, PRIMARY_FIELD_ORDER
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
-from extractors.base import BaseExtractor
+from harvesters.base import BaseHarvester
 from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
 
 
-class ArcGISExtractor(BaseExtractor):
+class ArcGISHarvester(BaseHarvester):
     def __init__(self, config, schema):
         super().__init__(config, schema)
         self.config = config
@@ -65,9 +65,9 @@ class ArcGISExtractor(BaseExtractor):
             .pipe(self.parse_identifiers)
             .pipe(self.format_titles)
             .pipe(self.clean_descriptions)
-            .pipe(self.extract_creators)
+            .pipe(self.harvest_creators)
             .pipe(self.build_keyword_column)
-            .pipe(self.extract_dates)
+            .pipe(self.harvest_dates)
             .pipe(self.compute_temporal_coverage)
             .pipe(self.compute_bbox_column)
             .pipe(self.build_distribution_columns)
@@ -96,7 +96,7 @@ class ArcGISExtractor(BaseExtractor):
         secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
         return primary_records, secondary_df.to_dict(orient='records')
 
-    def extract(self):
+    def harvest(self):
         """
         Full workflow: fetch data, normalize it, and write outputs.
         Returns dict of generated file paths.
@@ -106,7 +106,7 @@ class ArcGISExtractor(BaseExtractor):
         print(f"[ArcGIS] Fetched {len(fetched)} hub records. Normalizing...")
         primary, secondary = self.normalize(fetched)
         results = self.write_outputs(primary, secondary)
-        print(f"[ArcGIS] Completed extraction: {results}")
+        print(f"[ArcGIS] Completed harvest: {results}")
         return results
 
     def flatten_datasets(self, records):
@@ -136,7 +136,7 @@ class ArcGISExtractor(BaseExtractor):
                 })
         return pd.DataFrame(rows)
 
-    def extract_identifier_and_id(self, identifier: str) -> tuple:
+    def harvest_identifier_and_id(self, identifier: str) -> tuple:
         parsed = urlparse(identifier)
         qs = parse_qs(parsed.query)
         if 'id' in qs:
@@ -146,7 +146,7 @@ class ArcGISExtractor(BaseExtractor):
         return identifier, identifier
 
     def parse_identifiers(self, df):
-        ids = df['identifier_raw'].apply(self.extract_identifier_and_id)
+        ids = df['identifier_raw'].apply(self.harvest_identifier_and_id)
         df[['Identifier', 'ID']] = pd.DataFrame(ids.tolist(), index=df.index)
         return df
 
@@ -184,21 +184,21 @@ class ArcGISExtractor(BaseExtractor):
         df['Description'] = df['description_raw'].apply(_clean)
         return df
 
-    def extract_creator(self, info):
+    def harvest_creator(self, info):
         if isinstance(info, dict):
             for v in info.values():
                 return v.replace(u"\u2019", "'")
         return ''
 
-    def extract_creators(self, df):
-        df['Creator'] = df['creator_info'].apply(self.extract_creator)
+    def harvest_creators(self, df):
+        df['Creator'] = df['creator_info'].apply(self.harvest_creator)
         return df
 
     def build_keyword_column(self, df):
         df['Keyword'] = df['keywords_list'].apply(lambda lst: '|'.join(lst).replace(' ', ''))
         return df
 
-    def extract_dates(self, df):
+    def harvest_dates(self, df):
         df['Date Issued'] = df['date_issued_raw'].str.split('T').str[0]
         df['Date Modified'] = df['date_modified_raw'].str.split('T').str[0]
         return df
@@ -262,7 +262,7 @@ class ArcGISExtractor(BaseExtractor):
         dist_df = df.apply(
             lambda r: pd.Series({
                 k: str(v) if not isinstance(v, (list, pd.Series)) and pd.notna(v) else ''
-                for k, v in self.extract_distribution_fields(r['distributions'], r['Title'], r['Description']).items()
+                for k, v in self.harvest_distribution_fields(r['distributions'], r['Title'], r['Description']).items()
             }),
             axis=1
         )
@@ -278,9 +278,9 @@ class ArcGISExtractor(BaseExtractor):
 
 
 
-    def extract_distribution_fields(self, distributions, title: str, description: str) -> dict:
+    def harvest_distribution_fields(self, distributions, title: str, description: str) -> dict:
         """
-        Extracts distribution URLs and infers resource class, type, and format from distribution records.
+        harvests distribution URLs and infers resource class, type, and format from distribution records.
         """
         distribution_fields = {
             'download': '',
@@ -341,13 +341,13 @@ class ArcGISExtractor(BaseExtractor):
 
 def main():
     """
-    Run ArcGIS extraction standalone for local testing.
+    Run ArcGIS harvestion standalone for local testing.
     """
-    config_path = "jobs/arcgis.yaml"
+    config_path = "config/arcgis.yaml"
     schema_path = "schemas/geobtaa_schema.yaml"
 
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    extractor = ArcGISExtractor(config, schema_path)
-    extractor.extract()
+    Harvester = ArcGISHarvester(config, schema_path)
+    Harvester.harvest()

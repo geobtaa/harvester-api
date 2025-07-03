@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from utils.constants import FIELD_ORDER
+from utils.field_order import FIELD_ORDER
 
 def basic_cleaning(df: pd.DataFrame) -> pd.DataFrame:
     """

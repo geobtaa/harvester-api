@@ -5,13 +5,6 @@ import os
 def load_local_schema(schema_path="schemas/geobtaa_schema.yaml"):
     """Load the local metadata schema from YAML."""
     with open(schema_path, "r", encoding="utf-8") as f:
-        schema = yaml.safe_load(f)
-    return schema
-    
-
-def load_local_schema(schema_path="schemas/geobtaa_schema.yaml"):
-    with open(schema_path, "r", encoding="utf-8") as f:
-        import yaml
         return yaml.safe_load(f)
 
 def write_csv(records: list[dict], output_path: str):

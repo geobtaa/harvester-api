@@ -11,13 +11,13 @@ from bs4 import BeautifulSoup
 
 # Project-specific
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
-from extractors.base import BaseExtractor
+from harvesters.base import BaseHarvester
 from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
 
 
-class PasdaExtractor(BaseExtractor):
+class PasdaHarvester(BaseHarvester):
     """
-    Extractor for PASDA HTML datasets. Fetches local or remote HTML,
+    Harvester for PASDA HTML datasets. Fetches local or remote HTML,
     parses dataset entries, normalizes metadata, and writes primary
     and secondary CSV outputs.
     """
@@ -85,7 +85,7 @@ class PasdaExtractor(BaseExtractor):
         return primary_records, secondary_df.to_dict(orient='records')
 
 
-    def extract(self):
+    def harvest(self):
         """
         Full workflow: fetch data, normalize it, and write outputs.
         Returns dict of generated file paths.
@@ -95,7 +95,7 @@ class PasdaExtractor(BaseExtractor):
         print("[PASDA] Normalizing data...")
         primary, secondary = self.normalize(raw_html)
         results = self.write_outputs(primary, secondary)
-        print(f"[PASDA] Completed extraction: {results}")
+        print(f"[PASDA] Completed harvest: {results}")
         return results
 
     def parse_pasda_html(self, html_content):
@@ -242,15 +242,15 @@ class PasdaExtractor(BaseExtractor):
 
 def main():
     """
-    Run PASDA extraction standalone for local testing.
+    Run PASDA harvest standalone for local testing.
     """
-    config_path = "jobs/pasda.yaml"
+    config_path = "config/pasda.yaml"
     schema_path = "schemas/geobtaa_schema.yaml"
 
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
-    extractor = PasdaExtractor(config, schema_path)
-    extractor.extract()
+    Harvester = PasdaHarvester(config, schema_path)
+    Harvester.harvest()
 
 

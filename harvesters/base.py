@@ -7,12 +7,12 @@ import time
 import pandas as pd
 
 # Project-specific
-from utils.constants import FIELD_ORDER, PRIMARY_FIELD_ORDER
+from utils.field_order import FIELD_ORDER, PRIMARY_FIELD_ORDER
 
 
-class BaseExtractor:
+class BaseHarvester:
     """
-    Base class for all extractors. Defines the shared interface
+    Base class for all Harvesters. Defines the shared interface
     and common utility methods like output writing and DataFrame cleanup.
     """
 
@@ -23,16 +23,16 @@ class BaseExtractor:
     def fetch(self):
         """
         Fetch raw data from the source.
-        Must be implemented in child extractors.
+        Must be implemented in child Harvesters.
         """
-        raise NotImplementedError("fetch() must be implemented by the extractor subclass.")
+        raise NotImplementedError("fetch() must be implemented by the Harvester subclass.")
 
     def normalize(self, raw_data) -> tuple[list[dict], list[dict]]:
         """
         Normalize raw records into primary and secondary records.
-        Must be implemented in child extractors.
+        Must be implemented in child Harvesters.
         """
-        raise NotImplementedError("normalize() must be implemented by the extractor subclass.")
+        raise NotImplementedError("normalize() must be implemented by the Harvester subclass.")
 
     def normalize_links(self, raw_links):
         """
