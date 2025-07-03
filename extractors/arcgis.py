@@ -15,6 +15,7 @@ import pandas as pd
 from utils.constants import FIELD_ORDER, PRIMARY_FIELD_ORDER
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
 from extractors.base import BaseExtractor
+from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
 
 
 class ArcGISExtractor(BaseExtractor):
@@ -49,6 +50,7 @@ class ArcGISExtractor(BaseExtractor):
                     'is_part_of': row.get('ID', hub_id),
                     'member_of': row.get('Member Of', hub_id),
                     'title_source': row.get('Publisher', ''),
+                    'default_bbox': row.get('Bounding Box', ''),
                     'raw_data': data
                 })
         return records
@@ -72,7 +74,22 @@ class ArcGISExtractor(BaseExtractor):
             .pipe(self.add_base_fields)
             .pipe(self.clean_creator_values)
             .pipe(self.drop_rows_without_resource_class)
-            .pipe(self.cleanup_and_reorder)
+            
+            
+        )
+        for col in df.columns:
+            types = df[col].apply(type).value_counts()
+            print(f"[DEBUG] Column {col} types:\n{types}\n")
+
+        # Drop raw nested fields before cleaning
+        df = df.drop(columns=['distributions', 'creator_info', 'keywords_list'], errors='ignore')
+
+        df = (
+            df
+            .pipe(spatial_cleaning)
+            .pipe(basic_cleaning)
+            .pipe(validation_pipeline)
+
         )
     
         primary_records = df.to_dict(orient='records')
@@ -113,7 +130,7 @@ class ArcGISExtractor(BaseExtractor):
                     'rights': ds.get('license', ''),
                     'identifier_raw': ds.get('identifier', ''),
                     'landing_page': ds.get('landingPage', ''),
-                    'spatial_obj': ds.get('spatial', {}),
+                    'spatial': ds.get('spatial', {}),
                     'bbox_fallback': rec.get('default_bbox', ''),
                     'distributions': ds.get('distribution', []),
                 })
@@ -221,13 +238,25 @@ class ArcGISExtractor(BaseExtractor):
 
     def compute_bbox_column(self, df):
         def _bbox(r):
-            sp = r['spatial_obj']
-            if isinstance(sp, dict) and sp.get('type') == 'envelope' and 'coordinates' in sp:
-                coords = sp['coordinates']
-                return ','.join(str(round(c, 2)) for pair in coords for c in pair)
-            return r['bbox_fallback']
+            sp = r.get('spatial', None)          # this is the raw 'spatial' field from ArcGIS dataset JSON
+            fallback = r.get('bbox_fallback', '')  # default bbox from your input CSV
+
+            # Case 1: if sp is a valid bbox string, return it directly
+            if isinstance(sp, str) and sp.count(',') == 3:
+                return sp
+
+            # # Case 2: optional future support for dict-based bbox (unlikely, but safe)
+            # if isinstance(sp, dict) and sp.get('type') == 'envelope' and 'coordinates' in sp:
+            #     coords = sp['coordinates']
+            #     rounded = [str(round(c, 3)) for pair in coords for c in pair]
+            #     return ','.join(rounded)
+
+            # Case 3: fallback to spreadsheet value if nothing else worked
+            return fallback if pd.notnull(fallback) else ''
+
         df['Bounding Box'] = df.apply(_bbox, axis=1)
         return df
+
 
     def build_distribution_columns(self, df):
         dist_df = df.apply(

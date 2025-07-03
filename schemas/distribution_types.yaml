@@ -55,7 +55,7 @@ distribution_types:
     reference_uri: http://iiif.io/api/presentation#manifest
 
   - key: image
-    variables: [imageService]
+    variables: [image]
     name: Image file
     reference_uri: http://schema.org/image
 

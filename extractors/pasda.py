@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 # Project-specific
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
 from extractors.base import BaseExtractor
+from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
 
 
 class PasdaExtractor(BaseExtractor):
@@ -29,6 +30,7 @@ class PasdaExtractor(BaseExtractor):
         # Load supporting location data (for place name normalization)
         default_locations_path = os.path.join("data", "locations.json")
         locations_path = self.config.get("locations_json", default_locations_path)
+        
 
         try:
             with open(locations_path, "r", encoding="utf-8") as f:
@@ -41,6 +43,14 @@ class PasdaExtractor(BaseExtractor):
 
         self.counties_in_pennsylvania = locations["counties_in_pennsylvania"]
         self.cities_in_pennsylvania = locations["cities_in_pennsylvania"]
+
+
+        spatial_csv_path = os.path.join("data", "spatial_counties.csv")
+        try:
+            self.spatial_data = pd.read_csv(spatial_csv_path)
+            print(f"[PASDA] Loaded spatial counties CSV with {len(self.spatial_data)} rows.")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(f"Spatial CSV not found: {spatial_csv_path}") from e
 
     def fetch(self):
         """
@@ -61,12 +71,14 @@ class PasdaExtractor(BaseExtractor):
               .pipe(self.format_date_ranges)
               .pipe(self.add_default_values)
               .pipe(self.transform_titles)
-              .pipe(self.cleanup_and_reorder)
+              .pipe(self.append_spatial_fields)
+              .pipe(spatial_cleaning)
+              .pipe(basic_cleaning)
+              .pipe(validation_pipeline)
         )
         
+        # df = self.append_spatial_fields(df)
         primary_records = df.to_dict(orient='records')
-        print(f"[DEBUG] First primary record: {primary_records[0] if primary_records else 'No records!'}")
-
         print(f"[DEBUG] Generating secondary table from {len(primary_records)} primary records")
         secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
         print(f"[DEBUG] Secondary dataframe rows: {len(secondary_df)}")
@@ -149,8 +161,11 @@ class PasdaExtractor(BaseExtractor):
         return df
 
     def transform_titles(self, df):
-        df['Title'] = df.apply(self.transform_title, axis=1)
+        df[['Title', 'Spatial Coverage']] = df.apply(
+            lambda row: pd.Series(self.transform_title(row)), axis=1
+        )
         return df
+
 
     def transform_title(self, row):
         alt_title = row['Alternative Title']
@@ -190,7 +205,39 @@ class PasdaExtractor(BaseExtractor):
 
         # Append Date Issued
         alt_title += f" {{{row['Date Issued']}}}"
-        return alt_title
+
+        return alt_title, bracket_content[0] if bracket_content else ""
+
+
+    def append_spatial_fields(self, df):
+        """
+        Merge on 'Spatial Coverage' to append Bounding Box, Geometry, and GeoNames.
+        """
+        merged_df = pd.merge(
+            df, self.spatial_data, left_on='Spatial Coverage', right_on='County', how='left'
+        )
+        print("[PASDA] Merged harvested records with spatial data on 'Spatial Coverage'.")
+
+        # Define Pennsylvania-wide defaults for unmatched records
+        default_values = {
+            'Bounding Box': "-80.52,39.72,-74.69,42.27",
+            'Geometry': (
+                "MultiPolygon(((-75.6 39.8, -75.8 39.7, -80.5 39.7, -80.5 42.3, "
+                "-79.8 42.5, -79.8 42, -75.3 42, -75.1 41.8, -75 41.5, -74.7 41.4, "
+                "-75.1 41, -75.1 40.9, -75.2 40.7, -74.7 40.2, -75.1 39.9, -75.6 39.8)))"
+            ),
+            'GeoNames': "http://sws.geonames.org/6254927"
+        }
+
+        for column, default in default_values.items():
+            if column in merged_df.columns:
+                merged_df[column] = merged_df[column].fillna(default)
+            else:
+                merged_df[column] = default
+            print(f"[PASDA] Set default for missing '{column}' values.")
+
+        return merged_df
+
 
 
 def main():

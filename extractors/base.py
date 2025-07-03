@@ -34,14 +34,6 @@ class BaseExtractor:
         """
         raise NotImplementedError("normalize() must be implemented by the extractor subclass.")
 
-    def cleanup_and_reorder(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Clean up DataFrame cells and reorder columns to match FIELD_ORDER.
-        """
-        df = df.applymap(lambda x: x.strip('|- ') if isinstance(x, str) else x)
-        cols = [c for c in FIELD_ORDER if c in df.columns]
-        return df.reindex(columns=cols)
-
     def normalize_links(self, raw_links):
         """
         Optional stub for normalizing distribution links.
@@ -60,7 +52,9 @@ class BaseExtractor:
         primary_out = self.config["output_primary_csv"]
         primary_filename = os.path.join("outputs", f"{today}_{os.path.basename(primary_out)}")
         primary_df = pd.DataFrame(primary_records)
-        primary_df = primary_df.reindex(columns=[c for c in FIELD_ORDER if c in primary_df.columns])
+        primary_df = primary_df.reindex(
+            columns=[c for c in PRIMARY_FIELD_ORDER if c in primary_df.columns]
+        )        
         primary_df.to_csv(primary_filename, index=False)
         results["primary_csv"] = primary_filename
 
