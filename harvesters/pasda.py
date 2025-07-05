@@ -30,7 +30,7 @@ PASDA_DEFAULTS = {
     'Resource Class': 'Datasets',
     'Publication State': 'published'
 }
-
+####################################################
 
 class PasdaHarvester(BaseHarvester):
     """
@@ -87,7 +87,6 @@ class PasdaHarvester(BaseHarvester):
               .pipe(validation_pipeline)
         )
         
-        # df = self.append_spatial_fields(df)
         primary_records = df.to_dict(orient='records')
         print(f"[DEBUG] Generating secondary table from {len(primary_records)} primary records")
         secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
