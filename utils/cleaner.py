@@ -143,7 +143,7 @@ def validate_required_columns(df, required_columns=None):
     Raises ValueError if any required columns are missing.
     """
     if required_columns is None:
-        required_columns = ['Identifier', 'Title']
+        required_columns = ['ID', 'Title', 'Access Rights', 'Resource Class']
 
     missing = [col for col in required_columns if col not in df.columns]
     if missing:

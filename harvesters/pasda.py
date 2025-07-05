@@ -13,6 +13,23 @@ from bs4 import BeautifulSoup
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
 from harvesters.base import BaseHarvester
 from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
+from utils.defaults import apply_derived_values, apply_default_values
+
+today = time.strftime('%Y-%m-%d')
+
+PASDA_DEFAULTS = {
+    'Code': '08a-01',
+    'Access Rights': 'Public',
+    'Accrual Method': 'HTML',
+    'Date Accessioned': today,
+    'Language': 'eng',
+    'Is Part Of': '08a-01',
+    'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a',
+    'Provider': 'Pennsylvania Spatial Data Access (PASDA)',
+    'Format': 'File',
+    'Resource Class': 'Datasets',
+    'Publication State': 'published'
+}
 
 
 class PasdaHarvester(BaseHarvester):
@@ -52,14 +69,6 @@ class PasdaHarvester(BaseHarvester):
         except FileNotFoundError as e:
             raise FileNotFoundError(f"Spatial CSV not found: {spatial_csv_path}") from e
 
-    def fetch(self):
-        """
-        Read PASDA HTML from a local file defined in the job config.
-        """
-        html_path = self.config["input_html"]
-        with open(html_path, 'r', encoding='utf-8') as f:
-            return f.read()
-
     def normalize(self, raw_html):
         """
         Parse PASDA HTML into records, clean, and transform titles.
@@ -69,9 +78,10 @@ class PasdaHarvester(BaseHarvester):
         df = (
             df.pipe(self.drop_federal)
               .pipe(self.format_date_ranges)
-              .pipe(self.add_default_values)
               .pipe(self.transform_titles)
               .pipe(self.append_spatial_fields)
+              .pipe(lambda df: apply_default_values(df, PASDA_DEFAULTS))
+              
               .pipe(spatial_cleaning)
               .pipe(basic_cleaning)
               .pipe(validation_pipeline)
@@ -84,6 +94,13 @@ class PasdaHarvester(BaseHarvester):
         print(f"[DEBUG] Secondary dataframe rows: {len(secondary_df)}")
         return primary_records, secondary_df.to_dict(orient='records')
 
+    def fetch(self):
+        """
+        Read PASDA HTML from a local file defined in the job config.
+        """
+        html_path = self.config["input_html"]
+        with open(html_path, 'r', encoding='utf-8') as f:
+            return f.read()
 
     def harvest(self):
         """
@@ -141,25 +158,6 @@ class PasdaHarvester(BaseHarvester):
         df['Date Range'] = df['Date Issued'].apply(make_range)
         return df
 
-    def add_default_values(self, df):
-        today = time.strftime('%Y-%m-%d')
-        df['Identifier'] = df['information']
-        defaults = {
-            'Code': '08a-01',
-            'Access Rights': 'Public',
-            'Accrual Method': 'HTML',
-            'Date Accessioned': today,
-            'Language': 'eng',
-            'Is Part Of': '08a-01',
-            'Member Of': 'ba5cc745-21c5-4ae9-954b-72dd8db6815a',
-            'Provider': 'Pennsylvania Spatial Data Access (PASDA)',
-            'Format': 'File',
-            'Resource Class': 'Datasets',
-            'Publication State': 'published'
-        }
-        for col, val in defaults.items():
-            df[col] = val
-        return df
 
     def transform_titles(self, df):
         df[['Title', 'Spatial Coverage']] = df.apply(
