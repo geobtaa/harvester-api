@@ -11,7 +11,7 @@ from bs4 import BeautifulSoup
 
 # Project-specific
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
-from harvesters.base import BaseHarvester
+from harvesters.old_base import BaseHarvester
 from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
 from utils.defaults import apply_derived_values, apply_default_values
 

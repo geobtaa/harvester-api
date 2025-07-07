@@ -1,3 +1,3 @@
-from harvesters import arcgis
+from harvesters import old_arcgis
 
-arcgis.main()
+old_arcgis.main()

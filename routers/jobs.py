@@ -3,8 +3,8 @@ import os
 import yaml
 
 from utils.file_io import load_local_schema
-from harvesters.pasda import PasdaHarvester
-from harvesters.arcgis import ArcGISHarvester
+from harvesters.old_pasda import PasdaHarvester
+from harvesters.old_arcgis import ArcGISHarvester
 
 router = APIRouter()
 

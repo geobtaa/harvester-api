@@ -1,3 +1,3 @@
-from harvesters import pasda
+from harvesters import old_pasda
 
-pasda.main()
+old_pasda.main()

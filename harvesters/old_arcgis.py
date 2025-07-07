@@ -14,7 +14,7 @@ import pandas as pd
 # Project-specific
 from utils.field_order import FIELD_ORDER, PRIMARY_FIELD_ORDER
 from utils.distribution_writer import load_distribution_types, generate_secondary_table
-from harvesters.base import BaseHarvester
+from harvesters.old_base import BaseHarvester
 from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
 
 
