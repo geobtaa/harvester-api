@@ -1,36 +1,35 @@
-# Standard library
-import os
-import time
-import re
-import csv
-import json
-import yaml
-from urllib.parse import urlparse, parse_qs
+"""
+ArcGIS Harvester
 
-# Third-party
+This module defines:
+- ArcGISHarvester (inherits from BaseHarvester)
+- ArcGIS-specific data parsing and field derivation functions
+"""
+
+import csv
 import requests
 import pandas as pd
+import time
+import re
+from urllib.parse import urlparse, parse_qs
 
-# Project-specific
-from utils.field_order import FIELD_ORDER, PRIMARY_FIELD_ORDER
-from utils.distribution_writer import load_distribution_types, generate_secondary_table
 from harvesters.base import BaseHarvester
-from utils.cleaner import basic_cleaning, spatial_cleaning, validation_pipeline
+from utils.distribution_writer import load_distribution_types, generate_secondary_table
+from utils.cleaner import spatial_cleaning
+from utils.validation import validation_pipeline
 
 
 class ArcGISHarvester(BaseHarvester):
-    def __init__(self, config, schema):
-        super().__init__(config, schema)
-        self.config = config
-        self.schema = schema
+    def __init__(self, config):
+        super().__init__(config)
+        self.distribution_types = None
+
+    def load_schema(self):
+        # You could load the schema here too if needed
         self.distribution_types = load_distribution_types()
 
     def fetch(self):
-        """
-        Fetch raw data from a list of ArcGIS Hub URLs defined in a CSV.
-        """
         hub_file = self.config.get("hub_list_csv")
-        records = []
         with open(hub_file, newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
@@ -41,9 +40,10 @@ class ArcGISHarvester(BaseHarvester):
                     resp.raise_for_status()
                     data = resp.json()
                 except Exception as e:
-                    print(f"[ArcGIS] Error fetching {hub_id}: {e}")
+                    yield f"[ArcGIS] ❌ Error fetching {hub_id}: {e}"
                     continue
-                records.append({
+
+                record = {
                     'hub_id': hub_id,
                     'provider': row.get('Title', ''),
                     'spatial_coverage': row.get('Spatial Coverage', ''),
@@ -52,66 +52,19 @@ class ArcGISHarvester(BaseHarvester):
                     'title_source': row.get('Publisher', ''),
                     'default_bbox': row.get('Bounding Box', ''),
                     'raw_data': data
-                })
-        return records
-        
-    def normalize(self, fetched_records):
-        """
-        Flatten fetched ArcGIS records, parse fields, and return primary and secondary metadata.
-        """
-        df = self.flatten_datasets(fetched_records)
-        df = (
-            df
-            .pipe(self.parse_identifiers)
-            .pipe(self.format_titles)
-            .pipe(self.clean_descriptions)
-            .pipe(self.harvest_creators)
-            .pipe(self.build_keyword_column)
-            .pipe(self.harvest_dates)
-            .pipe(self.compute_temporal_coverage)
-            .pipe(self.compute_bbox_column)
-            .pipe(self.build_distribution_columns)
-            .pipe(self.add_base_fields)
-            .pipe(self.clean_creator_values)
-            .pipe(self.drop_rows_without_resource_class)
-            
-            
-        )
-        for col in df.columns:
-            types = df[col].apply(type).value_counts()
-            print(f"[DEBUG] Column {col} types:\n{types}\n")
+                }
 
-        # Drop raw nested fields before cleaning
-        df = df.drop(columns=['distributions', 'creator_info', 'keywords_list'], errors='ignore')
+                yield f"[ArcGIS] ✅ Fetched {hub_id} — {row.get('Title', 'No Title')}"
+                yield record  # this sends the record downstream
+                
 
-        df = (
-            df
-            .pipe(spatial_cleaning)
-            .pipe(basic_cleaning)
-            .pipe(validation_pipeline)
 
-        )
-    
-        primary_records = df.to_dict(orient='records')
-        secondary_df = generate_secondary_table(pd.DataFrame(primary_records), self.distribution_types)
-        return primary_records, secondary_df.to_dict(orient='records')
+    def parse(self, fetched_records):
+        return fetched_records
 
-    def harvest(self):
-        """
-        Full workflow: fetch data, normalize it, and write outputs.
-        Returns dict of generated file paths.
-        """
-        print("[ArcGIS] Fetching data from hubs...")
-        fetched = self.fetch()
-        print(f"[ArcGIS] Fetched {len(fetched)} hub records. Normalizing...")
-        primary, secondary = self.normalize(fetched)
-        results = self.write_outputs(primary, secondary)
-        print(f"[ArcGIS] Completed harvest: {results}")
-        return results
-
-    def flatten_datasets(self, records):
+    def flatten(self, parsed_data):
         rows = []
-        for rec in records:
+        for rec in parsed_data:
             hub_id = rec['hub_id']
             for ds in rec['raw_data'].get('dataset', []):
                 rows.append({
@@ -134,9 +87,71 @@ class ArcGISHarvester(BaseHarvester):
                     'bbox_fallback': rec.get('default_bbox', ''),
                     'distributions': ds.get('distribution', []),
                 })
-        return pd.DataFrame(rows)
+        return rows
 
-    def harvest_identifier_and_id(self, identifier: str) -> tuple:
+    def build_dataframe(self, flat_data):
+        return pd.DataFrame(flat_data)
+
+    def derive_fields(self, df):
+        df = (
+            df.pipe(self.arcgis_parse_identifiers)
+            .pipe(self.arcgis_format_titles)
+            .pipe(self.arcgis_clean_descriptions)
+            .pipe(self.arcgis_harvest_creators)
+            .pipe(self.arcgis_build_keywords)
+            .pipe(self.arcgis_harvest_dates)
+            .pipe(self.arcgis_temporal_coverage)
+            .pipe(self.arcgis_compute_bbox_column)
+            .pipe(self.arcgis_build_distribution_columns)
+            .pipe(self.arcgis_clean_creator_values)
+            .pipe(self.arcgis_drop_rows_without_resource_class)
+        )
+
+        # Drop any remaining dict-based fields before deduplication/cleaning
+        df = df.drop(columns=['creator_info', 'keywords_list', 'spatial', 'distributions'], errors='ignore')
+        return df
+
+
+    def add_defaults(self, df):
+        df['Code'] = df['hub_id']
+        df['Provider'] = df['provider']
+        df['Display Note'] = (
+            "This dataset was automatically cataloged from the provider's ArcGIS Hub. "
+            "In some cases, information shown here may be incorrect or out-of-date. "
+            "Click the 'Visit Source' button to search for items on the original provider's website."
+        )
+        df['Language'] = 'eng'
+        df['Access Rights'] = 'Public'
+        df['Accrual Method'] = 'ArcGIS Hub'
+        df['Publication State'] = 'published'
+        df['Is Part Of'] = df['is_part_of']
+        df['Member Of'] = df['member_of']
+        df['Spatial Coverage'] = df['spatial_coverage']
+        df['Alternative Title'] = df['alternative_title']
+        return df
+    
+    def add_provenance(self, df):
+        today = time.strftime('%Y-%m-%d')
+        df['Date Accessioned'] = today
+        return df
+
+    def clean(self, df):
+        df = spatial_cleaning(df)
+        df = super().clean(df)
+        return df
+
+    def validate(self, df):
+        validation_pipeline(df)
+        return df
+
+    def write_outputs(self, primary_df, distributions_df=None):
+        # Add back the secondary table logic here
+        distributions_df = generate_secondary_table(primary_df.copy(), self.distribution_types)
+        return super().write_outputs(primary_df, distributions_df)
+
+# --- ArcGIS-Specific Field Derive Functions ---
+
+    def arcgis_harvest_identifier_and_id(self, identifier: str) -> tuple:
         parsed = urlparse(identifier)
         qs = parse_qs(parsed.query)
         if 'id' in qs:
@@ -145,13 +160,12 @@ class ArcGISHarvester(BaseHarvester):
             return cleaned, ds_id
         return identifier, identifier
 
-    def parse_identifiers(self, df):
-        ids = df['identifier_raw'].apply(self.harvest_identifier_and_id)
+    def arcgis_parse_identifiers(self, df):
+        ids = df['identifier_raw'].apply(self.arcgis_harvest_identifier_and_id)
         df[['Identifier', 'ID']] = pd.DataFrame(ids.tolist(), index=df.index)
         return df
 
-        
-    def format_titles(self, df):
+    def arcgis_format_titles(self, df):
         def _format(row):
             alternative_title = row['alternative_title']
             title_source = row['title_source']
@@ -175,48 +189,75 @@ class ArcGISHarvester(BaseHarvester):
         return df
 
 
-    def clean_descriptions(self, df):
+    def arcgis_clean_descriptions(self, df):
         def _clean(text):
             text = text.replace("{{default.description}}", "").replace("{{description}}", "")
             text = re.sub(r'[\n\r]+', ' ', text)
             text = re.sub(r'\s{2,}', ' ', text)
-            return text.translate({8217: "'", 8220: '"', 8221: '"', 160: "", 183: "", 8226: "", 8211: '-', 8203: ""})
+            return text.translate({
+                8217: "'",  # RIGHT SINGLE QUOTATION MARK → apostrophe
+                8220: '"',  # LEFT DOUBLE QUOTATION MARK → "
+                8221: '"',  # RIGHT DOUBLE QUOTATION MARK → "
+                160: "",    # NON-BREAKING SPACE → removed
+                183: "",    # MIDDLE DOT → removed
+                8226: "",   # BULLET → removed
+                8211: '-',  # EN DASH → hyphen
+                8203: ""    # ZERO WIDTH SPACE → removed
+            })
         df['Description'] = df['description_raw'].apply(_clean)
         return df
 
-    def harvest_creator(self, info):
+
+    def arcgis_harvest_creator(self, info):
         if isinstance(info, dict):
             for v in info.values():
                 return v.replace(u"\u2019", "'")
         return ''
 
-    def harvest_creators(self, df):
-        df['Creator'] = df['creator_info'].apply(self.harvest_creator)
+    def arcgis_harvest_creators(self, df):
+        df['Creator'] = df['creator_info'].apply(self.arcgis_harvest_creator)
         return df
 
-    def build_keyword_column(self, df):
+    def arcgis_build_keywords(self, df):
         df['Keyword'] = df['keywords_list'].apply(lambda lst: '|'.join(lst).replace(' ', ''))
         return df
 
-    def harvest_dates(self, df):
+    def arcgis_harvest_dates(self, df):
         df['Date Issued'] = df['date_issued_raw'].str.split('T').str[0]
         df['Date Modified'] = df['date_modified_raw'].str.split('T').str[0]
         return df
 
-    def compute_temporal_coverage(self, df):
+    def arcgis_temporal_coverage(self, df):
         def _cov(r):
+            # Case 1: Extract from {YYYY-YYYY} in title
             match = re.search(r"\{(.*?)\}", r['Title'])
             if match:
                 tc = match.group(1)
                 dr = tc if '-' in tc else f"{tc}-{tc}"
             else:
-                tc = f"Last modified {r['Date Modified']}"
-                dr = ''
+                # Always set Temporal Coverage from Date Modified
+                modified = r.get('Date Modified', '')
+                tc = f"Last modified {modified}" if modified else ''
+
+                # Try to compute Date Range from Issued + Modified
+                issued_year = r.get('Date Issued', '')[:4]
+                modified_year = modified[:4]
+
+                if issued_year.isdigit() and modified_year.isdigit():
+                    dr = f"{issued_year}-{modified_year}"
+                elif issued_year.isdigit():
+                    dr = f"{issued_year}-{issued_year}"
+                elif modified_year.isdigit():
+                    dr = f"{modified_year}-{modified_year}"
+                else:
+                    dr = ''
+
             return pd.Series({'Temporal Coverage': tc, 'Date Range': dr})
+
         cov = df.apply(_cov, axis=1)
         return pd.concat([df, cov], axis=1)
-        
-    def clean_creator_values(self, df):
+
+    def arcgis_clean_creator_values(self, df):
         def _clean(value):
             if isinstance(value, dict) and 'name' in value:
                 return value['name']
@@ -230,13 +271,12 @@ class ArcGISHarvester(BaseHarvester):
         df['Creator'] = df['Creator'].apply(_clean)
         return df
         
-    def drop_rows_without_resource_class(self, df):
+    def arcgis_drop_rows_without_resource_class(self, df):
         df['Resource Class'] = df['Resource Class'].astype(str).replace(r'^\s*$', pd.NA, regex=True)
         df = df.dropna(subset=['Resource Class'])
         return df
 
-
-    def compute_bbox_column(self, df):
+    def arcgis_compute_bbox_column(self, df):
         def _bbox(r):
             sp = r.get('spatial', None)          # this is the raw 'spatial' field from ArcGIS dataset JSON
             fallback = r.get('bbox_fallback', '')  # default bbox from your input CSV
@@ -258,11 +298,11 @@ class ArcGISHarvester(BaseHarvester):
         return df
 
 
-    def build_distribution_columns(self, df):
+    def arcgis_build_distribution_columns(self, df):
         dist_df = df.apply(
             lambda r: pd.Series({
                 k: str(v) if not isinstance(v, (list, pd.Series)) and pd.notna(v) else ''
-                for k, v in self.harvest_distribution_fields(r['distributions'], r['Title'], r['Description']).items()
+                for k, v in self.arcgis_harvest_distribution_fields(r['distributions'], r['Title'], r['Description']).items()
             }),
             axis=1
         )
@@ -276,9 +316,7 @@ class ArcGISHarvester(BaseHarvester):
 
         return df
 
-
-
-    def harvest_distribution_fields(self, distributions, title: str, description: str) -> dict:
+    def arcgis_harvest_distribution_fields(self, distributions, title: str, description: str) -> dict:
         """
         harvests distribution URLs and infers resource class, type, and format from distribution records.
         """
@@ -318,25 +356,6 @@ class ArcGISHarvester(BaseHarvester):
             distribution_fields['Resource Type'] = 'LiDAR'
         return distribution_fields
 
-    def add_base_fields(self, df):
-        today = time.strftime('%Y-%m-%d')
-        df['Code'] = df['hub_id']
-        df['Provider'] = df['provider']
-        df['Display Note'] = (
-            "This dataset was automatically cataloged from the provider's ArcGIS Hub. "
-            "In some cases, information shown here may be incorrect or out-of-date. "
-            "Click the 'Visit Source' button to search for items on the original provider's website."
-        )
-        df['Language'] = 'eng'
-        df['Access Rights'] = 'Public'
-        df['Accrual Method'] = 'ArcGIS Hub'
-        df['Date Accessioned'] = today
-        df['Publication State'] = 'published'
-        df['Is Part Of'] = df['is_part_of']
-        df['Member Of'] = df['member_of']
-        df['Spatial Coverage'] = df['spatial_coverage']
-        df['Alternative Title'] = df['alternative_title']
-        return df
 
 
 def main():

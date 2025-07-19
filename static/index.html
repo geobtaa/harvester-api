@@ -7,13 +7,25 @@
     body { font-family: sans-serif; margin: 2em; }
     button { margin-left: 1em; }
     #status { margin-top: 2em; color: green; }
+    .nav-links { margin: 2em 0; }
+    .nav-links a { display: inline-block; margin-right: 1.5em; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h1>Metadata Harvest Jobs</h1>
+  <h1>Metadata Harvester Admin</h1>
+
+  <div class="nav-links">
+    <a href="/static/arcgis.html">ArcGIS Harvester</a>
+    <a href="/static/pasda.html">PASDA Harvester (coming soon)</a>
+  </div>
+
+  <button onclick="openSchema()">Open Metadata Schema</button>
+  <button onclick="openDistributionTypes()">Open Distribution Types</button>
+
+  <!-- <h2>Available Harvest Jobs</h2>
   <ul id="job-list"></ul>
 
-  <div id="status"></div>
+  <div id="status"></div> -->
 
   <script>
     const apiBase = "";
@@ -44,6 +56,14 @@
         console.error(e);
         document.getElementById("status").textContent = `❌ Error running job ${jobId}`;
       }
+    }
+
+    function openSchema() {
+      window.open("/schema", "_blank");
+    }
+
+    function openDistributionTypes() {
+      window.open("/distribution-types", "_blank");
     }
 
     fetchJobs();

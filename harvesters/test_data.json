@@ -1,0 +1,12 @@
+[
+  {
+    "title": "Sample Dataset A",
+    "alternative_title": "Alternate A 2018",
+    "creator": "Agency A"
+  },
+  {
+    "title": "Sample Dataset B",
+    "alternative_title": "Alternate B 2019-2020",
+    "creator": "Agency B"
+  }
+]

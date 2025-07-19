@@ -1,7 +1,11 @@
 import yaml
 import pandas as pd
 import os
-
+    
+def load_yaml_file(path):
+    with open(path, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+    
 def load_local_schema(schema_path="schemas/geobtaa_schema.yaml"):
     """Load the local metadata schema from YAML."""
     with open(schema_path, "r", encoding="utf-8") as f:

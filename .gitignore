@@ -19,6 +19,7 @@ venv/
 # Outputs
 outputs/
 
+
 # Pytest cache
 .pytest_cache/
 

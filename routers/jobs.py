@@ -40,13 +40,13 @@ async def run_job(job_id: str):
         job_cfg = yaml.safe_load(f)
 
     # Load schema and instantiate the correct harvester
-    schema = load_local_schema()
+    # schema = load_local_schema()
     harvester_type = job_cfg.get("type")
 
     if harvester_type == "arcgis":
-        harvester = ArcGISHarvester(job_cfg, schema)
+        harvester = ArcGISHarvester(job_cfg)
     elif harvester_type == "pasda":
-        harvester = PasdaHarvester(job_cfg, schema)
+        harvester = PasdaHarvester(job_cfg)
     else:
         raise HTTPException(
             status_code=400,
@@ -54,6 +54,6 @@ async def run_job(job_id: str):
         )
 
     # Run the full harvester workflow (fetch, normalize, write outputs)
-    results = harvester.harvest()
+    results = harvester.harvest_pipeline()
 
     return {"status": "completed", **results}
