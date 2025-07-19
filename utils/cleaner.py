@@ -1,52 +1,103 @@
 import pandas as pd
 import numpy as np
+from bs4 import BeautifulSoup
+
 from utils.field_order import FIELD_ORDER
 
-def basic_cleaning(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Perform basic DataFrame cleaning:
-    - Strip unwanted characters from string cells
-    - Remove duplicate columns
-    - Remove duplicate rows
-    - Reset index
-    - Reorder columns to FIELD_ORDER if defined
-    """
-    # Strip unwanted characters
-    df = df.map(lambda x: x.strip('|- ') if isinstance(x, str) else x)
+######### Basic Cleaning #############
 
-    # Remove duplicate columns
+def deduplicate_rows_and_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove duplicate columns and deduplicate rows based on the 'ID' column, if present.
+    Also resets the index.
+    """
+    # Drop duplicate columns
     df = df.loc[:, ~df.columns.duplicated()]
-
-    # Remove completely duplicate rows
-    df = df.drop_duplicates()
-
-    # Drop exact duplicate rows
-    before_dedup = len(df)
-    df = df.drop_duplicates()
-    after_dedup = len(df)
-    if after_dedup < before_dedup:
-        print(f"[CLEAN] Dropped {before_dedup - after_dedup} exact duplicate rows.")
-
-    # Drop rows with duplicate IDs
+    
+    # Deduplicate based on ID if present
     if 'ID' in df.columns:
-        before_id_dedup = len(df)
-        df = df.drop_duplicates(subset=['ID'], keep='first')
-        after_id_dedup = len(df)
-        if after_id_dedup < before_id_dedup:
-            print(f"[CLEAN] Dropped {before_id_dedup - after_id_dedup} rows with duplicate IDs.")
+        before = len(df)
+        df = df.drop_duplicates(subset='ID', keep='first')
+        after = len(df)
+        if after < before:
+            print(f"[CLEAN] Dropped {before - after} rows with duplicate IDs.")
     else:
-        print("[CLEAN] Warning: 'ID' column not found; skipping duplicate ID removal.")
-
+        print("[CLEAN] Warning: 'ID' column not found; skipping ID-based deduplication.")
 
     # Reset index
     df = df.reset_index(drop=True)
 
-    # Reorder columns based on FIELD_ORDER
-    cols = [c for c in FIELD_ORDER if c in df.columns]
-    df = df.reindex(columns=cols)
-
-    print(f"[CLEAN] Basic cleaning complete: {len(df)} unique rows, {len(df.columns)} unique columns.")
     return df
+
+def reorder_columns(df: pd.DataFrame, field_order: list = FIELD_ORDER) -> pd.DataFrame:
+    """
+    Reorder columns based on predefined FIELD_ORDER.
+    """
+    cols = [c for c in field_order if c in df.columns]
+    return df.reindex(columns=cols)
+
+def strip_text_fields(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Strip HTML and unwanted characters from all string fields in the DataFrame.
+    """
+    def clean_cell(cell):
+        if isinstance(cell, str):
+            # Remove HTML tags
+            text = BeautifulSoup(cell, "html.parser").get_text()
+            # Strip unwanted characters
+            return text.strip('|- ')
+        return cell
+
+    return df.applymap(clean_cell)
+
+
+def create_date_ranges(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Cleans the 'Date Range' field:
+    - Fixes reversed ranges (e.g., 2024-2020 → 2020-2024)
+    - Clears the field if it contains non-integer values
+    """
+    def _clean(row):
+        x = row.get('Date Range', '')
+        if pd.isnull(x) or x == '':
+            return x
+
+        date_ranges = str(x).split('|')
+        for i in range(len(date_ranges)):
+            years = date_ranges[i].split('-')
+
+            if all(y.isdigit() for y in years):
+                if len(years) == 2 and int(years[0]) > int(years[1]):
+                    years = sorted(years)
+                    date_ranges[i] = '-'.join(years)
+            else:
+                return ''  # Clear non-integer values immediately
+
+        return '|'.join(date_ranges)
+
+    df['Date Range'] = df.apply(_clean, axis=1)
+    return df
+
+def basic_cleaning(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Run core cleaning steps on the DataFrame:
+    - Remove duplicate rows and columns
+    - Strip HTML and unwanted characters from all text fields
+    - Create standardized date ranges
+    - Reorder columns based on FIELD_ORDER
+    """
+    df = (
+        df.pipe(deduplicate_rows_and_columns)
+          .pipe(strip_text_fields)
+          .pipe(create_date_ranges)
+          .pipe(reorder_columns)
+    )
+    print(f"[CLEAN] Basic cleaning complete: {len(df)} rows, {len(df.columns)} columns.")
+    return df
+
+
+
+######## SPATIAL FIELDS CLEANING ##############
 
 
 def round_coordinates(df):
@@ -133,84 +184,6 @@ def spatial_cleaning(df):
     df = round_coordinates(df)
     df = correct_bounding_box(df)
     df = clean_bounding_box(df)
-    return df
-
-#####################Validation##################################
-
-def validate_required_columns(df, required_columns=None):
-    """
-    Ensure required columns are present in the DataFrame.
-    Raises ValueError if any required columns are missing.
-    """
-    if required_columns is None:
-        required_columns = ['ID', 'Title', 'Access Rights', 'Resource Class']
-
-    missing = [col for col in required_columns if col not in df.columns]
-    if missing:
-        raise ValueError(f"[VALIDATION] Missing required columns: {', '.join(missing)}")
-    print(f"[VALIDATION] All required columns present: {', '.join(required_columns)}")
-    return df
-
-def validate_access_rights(df):
-    """
-    Validates that 'Access Rights' values are within allowed list.
-    Raises ValueError if any invalid values are found.
-    """
-    valid_values = {'Public', 'Restricted'}
-    invalid = df.loc[~df['Access Rights'].isin(valid_values), 'Access Rights'].unique()
-    if len(invalid) > 0:
-        raise ValueError(f"[VALIDATION] Invalid Access Rights values: {invalid}")
-    print("[VALIDATION] All Access Rights values are valid.")
-    return df
-
-def validate_resource_class(df):
-    """
-    Validates that 'Resource Class' contains at least one acceptable class.
-    Raises ValueError if rows have Resource Class empty or invalid.
-    """
-    valid_classes = {'Collections', 'Datasets', 'Imagery', 'Maps', 'Web services', 'Websites', 'Series','Other'}
-    def is_valid(cell):
-        if pd.isnull(cell): return False
-        classes = [c.strip() for c in str(cell).split('|')]
-        return any(c in valid_classes for c in classes)
-    
-    invalid_rows = df[~df['Resource Class'].apply(is_valid)]
-    if not invalid_rows.empty:
-        raise ValueError(f"[VALIDATION] Found rows with invalid Resource Class values.")
-    print("[VALIDATION] All Resource Class values are valid.")
-    return df
-
-def validate_bounding_box(df):
-    """
-    Checks Bounding Box column for numeric coordinate validity.
-    Raises ValueError if coordinates fall outside plausible ranges.
-    """
-    def check_bbox(x):
-        try:
-            coords = list(map(float, x.split(',')))
-            return (
-                -180 <= coords[0] <= 180 and
-                -90 <= coords[1] <= 90 and
-                -180 <= coords[2] <= 180 and
-                -90 <= coords[3] <= 90
-            )
-        except Exception:
-            return False
-
-    invalid_bboxes = df.loc[~df['Bounding Box'].apply(lambda x: check_bbox(x) if isinstance(x, str) else False)]
-    if not invalid_bboxes.empty:
-        raise ValueError(f"[VALIDATION] Found rows with invalid Bounding Boxes.")
-    print("[VALIDATION] All Bounding Box coordinates are within valid ranges.")
-    return df
-
-def validation_pipeline(df):
-    """
-    Run all validations on the DataFrame.
-    """
-    df = validate_required_columns(df)
-    df = validate_access_rights(df)
-    df = validate_resource_class(df)
-    df = validate_bounding_box(df)
     return df
 
 

@@ -1,16 +1,117 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-
-app = FastAPI()
-
-# Include routers
+from fastapi.responses import FileResponse
 from routers import schema as schema_router
 from routers import jobs as jobs_router
+import shutil
+import os
+import yaml
+import asyncio
+from fastapi.responses import StreamingResponse
+import time
+from harvesters.arcgis import ArcGISHarvester
 
+
+import os
+
+# Initialize app
+app = FastAPI()
+
+# Register routers
 app.include_router(schema_router.router)
 app.include_router(jobs_router.router)
 
-# Serve static files at root path
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# Mount static files at /static
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Serve index.html manually at root
+@app.get("/", response_class=FileResponse)
+async def root():
+    return FileResponse(os.path.join("static", "index.html"))
+
+# CSV file upload endpoint
+@app.post("/upload")
+async def upload_csv(file: UploadFile = File(...)):
+    if file.filename.endswith(".csv"):
+        save_path = os.path.join("data", "arcHubs.csv")
+        with open(save_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        return RedirectResponse(url="/static/arcgis.html?upload=success", status_code=303)
+    return {"error": "Only CSV files are allowed."}
+
+# Manual trigger for ArcGIS harvester
+@app.post("/run-arcgis")
+async def run_arcgis_harvester():
+    from harvesters.arcgis import ArcGISHarvester
+
+    config_path = "config/arcgis.yaml"
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    harvester = ArcGISHarvester(config)
+    harvester.load_schema()
+
+    records = harvester.fetch()
+    parsed = harvester.parse(records)
+    flat = harvester.flatten(parsed)
+    df = harvester.build_dataframe(flat)
+    df = harvester.derive_fields(df)
+    df = harvester.add_defaults(df)
+    df = harvester.add_provenance(df)
+    df = harvester.clean(df)
+    harvester.validate(df)
+    harvester.write_outputs(df)
+
+    return HTMLResponse(content="""
+        <html>
+          <head><title>Harvester Run Complete</title></head>
+          <body>
+            <h2>Harvester completed!</h2>
+            <p>Check the output folder for results.</p>
+            <p><a href="/static/arcgis.html">Back</a></p>
+          </body>
+        </html>
+    """, status_code=200)
+
+@app.get("/run-arcgis-stream")
+async def run_arcgis_stream():
+    from harvesters.arcgis import ArcGISHarvester
+    import yaml
+
+    async def event_stream():
+        config_path = "config/arcgis.yaml"
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        harvester = ArcGISHarvester(config)
+        harvester.load_schema()
+
+        fetched_records = []
+        for item in harvester.fetch():
+            if isinstance(item, str):
+                # Just yield the message — it was already formatted in arcgis.py
+                yield f"data: {item}\n\n"
+            else:
+                fetched_records.append(item)
+
+            await asyncio.sleep(0.1)  # <— allow the event loop to yield control
+
+
+        # Proceed with the remaining steps
+        yield f"data: ✅ Finished fetching {len(fetched_records)} records. Now parsing...\n\n"
+        parsed = harvester.parse(fetched_records)
+        flat = harvester.flatten(parsed)
+        df = harvester.build_dataframe(flat)
+        df = harvester.derive_fields(df)
+        df = harvester.add_defaults(df)
+        df = harvester.add_provenance(df)
+        df = harvester.clean(df)
+        harvester.validate(df)
+        harvester.write_outputs(df)
+
+        yield f"data: ✅ Harvester complete! Check the output folder.\n\n"
+        yield "data: DONE\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 

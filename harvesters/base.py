@@ -4,9 +4,8 @@ import time
 import pandas as pd
 from utils.field_order import PRIMARY_FIELD_ORDER  # adjust if you reorganize field orders
 
-from utils.cleaning import basic_cleaning
+from utils.cleaner import basic_cleaning
 from utils.validation import validation_pipeline
-from utils.file_io import write_primary_and_distributions
 
 class BaseHarvester:
     def __init__(self, config):
@@ -51,6 +50,7 @@ class BaseHarvester:
         Override in subclasses if source-specific cleaning is needed.
         """
         return basic_cleaning(df)
+
 
     def validate(self, df):
         """
@@ -115,7 +115,9 @@ class BaseHarvester:
               .pipe(self.add_defaults)
               .pipe(self.add_provenance)
               .pipe(self.clean)           # uses wrapper method → shared utility
-              .pipe(lambda df: self.validate(df) or df)  # uses wrapper
+              .pipe(self.validate)  # uses wrapper
         )
 
-        self.write_outputs(df)            # uses wrapper
+        results = self.write_outputs(df)
+        print(f"[Pipeline] Harvest complete: {results}")
+        return results
