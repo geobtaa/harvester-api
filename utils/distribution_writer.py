@@ -19,23 +19,49 @@ def build_secondary_table(df, distribution_types, id_field="ID"):
     """
     Returns a DataFrame with standardized columns:
     friendlier_id, reference_type, distribution_url, label.
-    Matches each 'variable' field in the dataframe to its distribution type from the YAML config.
+
+    Matches each 'variable' column in the DataFrame to its distribution type from the YAML config.
     """
     rows = []
+
     for dist in distribution_types:
-        key = dist["key"]
+        ref_key = dist["key"]
         for variable in dist.get("variables", []):
             if variable in df.columns:
-                for _, row in df.iterrows():
+                for idx, row in df.iterrows():
+                    friendlier_id = row.get(id_field, "")
                     url = row.get(variable)
-                    if pd.notna(url) and str(url).strip():
+
+                    if isinstance(url, str) and url.strip():
                         rows.append({
-                            "friendlier_id": row[id_field],
-                            "reference_type": key,
+                            "friendlier_id": friendlier_id,
+                            "reference_type": ref_key,
                             "distribution_url": url,
-                            "label": row.get("Format", "") if key == "download" else ""
+                            "label": row.get("Format", "")
                         })
+
+                    elif isinstance(url, list):
+                        for entry in url:
+                            if isinstance(entry, dict):
+                                label = entry.get("label", "")
+                                dist_url = entry.get("url", "")
+                                if dist_url:
+                                    rows.append({
+                                        "friendlier_id": friendlier_id,
+                                        "reference_type": ref_key,
+                                        "distribution_url": dist_url,
+                                        "label": label
+                                    })
+                            elif isinstance(entry, str) and entry.strip():
+                                rows.append({
+                                    "friendlier_id": friendlier_id,
+                                    "reference_type": ref_key,
+                                    "distribution_url": entry,
+                                    "label": ""
+                                })
+
     return pd.DataFrame(rows)
+
 
 def generate_secondary_table(normalized_df, distribution_types):
     """

@@ -1,0 +1,247 @@
+import os
+import csv
+import json
+import time
+import re
+import datetime
+import logging
+
+import pandas as pd
+from urllib.parse import urlparse, parse_qs
+
+from harvesters.base import BaseHarvester
+from utils.distribution_writer import load_distribution_types, generate_secondary_table
+from utils.cleaner import spatial_cleaning
+from utils.validation import validation_pipeline
+from utils.distribution_writer import load_distribution_types
+
+
+class OgmWiscHarvester(BaseHarvester):
+    def __init__(self, config):
+        super().__init__(config)
+        self.json_path = self.config.get("json_path")
+        self.distribution_types = None  # set to None for now; load later
+
+    def load_schema(self):
+        """
+        Loads the distribution_types schema from the shared YAML definition.
+        """
+        self.distribution_types = load_distribution_types()
+
+    def fetch(self):
+        """
+        Traverse the configured directory and load all .json files into a list of dictionaries.
+        Ignores invalid JSON files and logs warnings.
+        """
+        dataset = []
+        for root, _, files in os.walk(self.json_path):
+            for filename in files:
+                if filename.lower().endswith(".json"):
+                    file_path = os.path.join(root, filename)
+                    try:
+                        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                            record = json.load(f)
+                            dataset.append(record)
+                    except json.JSONDecodeError as e:
+                        logging.warning(f"[OGMWisc] Failed to parse JSON at {file_path}: {e}")
+        return dataset
+
+    def flatten(self, parsed_data):
+        """
+        Expands each record by parsing dct_references_s and adding one column per 'variable'
+        defined in distribution_types.yaml. Columns are named according to those variables.
+        """
+        flattened = []
+
+        # Build lookup: reference_uri → list of variable names
+        uri_to_vars = {}
+        for dist in self.distribution_types:
+            uri = dist.get("reference_uri")
+            variables = dist.get("variables", [])
+            if uri:
+                uri_to_vars[uri] = variables
+
+        for rec in parsed_data:
+            new_record = rec.copy()
+
+            raw_refs = rec.get("dct_references_s")
+            if isinstance(raw_refs, str):
+                try:
+                    references = json.loads(raw_refs.replace('""', '"'))  # handle malformed double quotes
+                    for ref_uri, url in references.items():
+                        for var in uri_to_vars.get(ref_uri, []):
+                            new_record[var] = url
+                except json.JSONDecodeError as e:
+                    logging.warning(f"[OGMWisc] Invalid JSON in dct_references_s for record {rec.get('layer_slug_s')}: {e}")
+
+            flattened.append(new_record)
+
+        return flattened
+    
+    def build_dataframe(self, records):
+        """
+        Converts a list of UW-Madison GBL 1.0 records into a cleaned DataFrame,
+        with renamed and normalized fields according to the GeoBTAA schema.
+        """
+        df = pd.DataFrame(records)
+
+        # --- Normalize multivalued fields ---
+        multivalue_fields = [
+            'dc_creator_sm', 'dc_subject_sm', 'dct_spatial_sm',
+            'dct_isPartOf_sm', 'dct_temporal_sm'
+        ]
+        for col in multivalue_fields:
+            if col in df.columns:
+                df[col] = df[col].apply(lambda x: '|'.join(x) if isinstance(x, list) else x)
+
+        # --- Parse bounding box from solr_geom ---
+        if 'solr_geom' in df.columns:
+            geom_parts = df['solr_geom'].str.strip('ENVELOPE()').str.split(',', expand=True)
+            if geom_parts.shape[1] == 4:
+                df[['w', 'e', 'n', 's']] = geom_parts
+                df['Bounding Box'] = df[['w', 's', 'e', 'n']].agg(','.join, axis=1)
+
+        # --- Rename to Aardvark/GeoBTAA field names ---
+        rename_map = {
+            'dc_title_s': 'Title',
+            'dc_description_s': 'Description',
+            'dc_creator_sm': 'Creator',
+            'dct_issued_s': 'Date Issued',
+            'dc_rights_s': 'Access Rights',
+            'dc_format_s': 'Format',
+            'layer_slug_s': 'ID',
+            'layer_id_s': 'WxS Identifier',
+            'dct_provenance_s': 'Provider',
+            'dc_publisher_s': 'Publisher',
+            'dc_publisher_sm': 'Publisher',  # sometimes multivalued
+            'dct_temporal_sm': 'Temporal Coverage',
+            'dct_isPartOf_sm': 'Local Collection',
+            'dc_subject_sm': 'Subject',
+            'uw_deprioritize_item_b': 'Child Record',
+            'thumbnail_path_ss': 'B1G Image'
+        }
+
+        df = df.rename(columns=rename_map)
+
+        return df
+    
+    def derive_fields(self, df):
+        df = (
+            df.pipe(self.ogmWisc_format_temporal_coverage)
+            .pipe(self.ogmWisc_flag_georeferenced)
+            .pipe(self.ogmWisc_generate_identifier)
+            .pipe(self.ogmWisc_map_theme_from_subject)
+            .pipe(self.ogmWisc_build_display_note)
+            .pipe(self.ogmWisc_add_resource_class)
+            .pipe(self.ogmWisc_add_resource_type)
+        )
+        return df
+    
+    def add_defaults(self, df):
+        df['Code'] = "10"
+        df['Is Part Of'] = "10d-03"
+        df['Member Of'] = "dc8c18df-7d64-4ff4-a754-d18d0891187d"
+        df['Language'] = "eng"
+        df['Spatial Coverage'] = "Wisconsin"
+        return df
+    
+    def add_provenance(self, df):
+        today = time.strftime('%Y-%m-%d')
+        df['Date Accessioned'] = today
+        df['Accrual Method'] = 'GBL-1.0'
+        return df
+    
+    def clean(self, df):
+        df = spatial_cleaning(df)
+        df = super().clean(df)
+        return df
+
+    def validate(self, df):
+        validation_pipeline(df)
+        return df
+
+    def write_outputs(self, primary_df, distributions_df=None):
+        distributions_df = generate_secondary_table(primary_df.copy(), self.distribution_types)
+        return super().write_outputs(primary_df, distributions_df)
+
+
+
+
+# --- OGM Wisconsin-Specific Field Derive Functions ---
+
+    def ogmWisc_format_temporal_coverage(self, df):
+        def format_temporal(temporal):
+            if pd.notna(temporal) and re.match(r'\d{4}-\d{4}', str(temporal)):
+                return temporal
+            if pd.notna(temporal):
+                return f"{temporal}-{temporal}"
+            return ''
+        if 'Temporal Coverage' in df.columns:
+            df['Date Range'] = df['Temporal Coverage'].apply(format_temporal)
+        return df
+
+
+    def ogmWisc_flag_georeferenced(self, df):
+        if 'Format' in df.columns:
+            df['Georeferenced'] = df['Format'].apply(lambda x: "true" if pd.notna(x) and "GeoTIFF" in x else "false")
+        return df
+
+
+    def ogmWisc_generate_identifier(self, df):
+        if 'ID' in df.columns:
+            df['Identifier'] = "https://geodata.wisc.edu/catalog/" + df['ID']
+        return df
+
+
+    def ogmWisc_map_theme_from_subject(self, df):
+        theme_map = {
+            "Farming": "Agriculture",
+            "Biota": "Biology",
+            "Atmospheric Sciences": "Climate",
+            "Geoscientific Information": "Geology",
+            "Imagery and Base Maps": "Imagery",
+            "Planning and Cadastral": "Property",
+            "Utilities and Communication": "Utilities"
+        }
+
+        def map_theme_multivalued(subject):
+            if not isinstance(subject, str) or subject.strip() == "":
+                return subject
+            parts = subject.split("|")
+            mapped = [theme_map.get(p.strip(), p.strip()) for p in parts]
+            return "|".join(mapped)
+
+        if 'Subject' in df.columns:
+            df['Theme'] = df['Subject'].apply(map_theme_multivalued)
+        return df
+
+
+    def ogmWisc_build_display_note(self, df):
+        def map_display_note(notice, supplemental):
+            parts = []
+            if isinstance(notice, str) and notice.strip():
+                parts.append(notice.strip())
+            if isinstance(supplemental, str) and supplemental.strip():
+                parts.append(f"Info: {supplemental.strip()}")
+            return "|".join(parts) if parts else ""
+
+        if 'uw_notice_s' in df.columns or 'uw_supplemental_s' in df.columns:
+            df['Display Note'] = [
+                map_display_note(n, s)
+                for n, s in zip(df.get('uw_notice_s', []), df.get('uw_supplemental_s', []))
+            ]
+        return df
+
+
+    def ogmWisc_add_resource_class(self, df):
+        if 'dc_type_s' in df.columns:
+            df['Resource Class'] = df['dc_type_s'].apply(lambda x: 'Imagery' if x == 'Image' else 'Datasets')
+        return df
+
+
+    def ogmWisc_add_resource_type(self, df):
+        if 'layer_geom_type_s' in df.columns:
+            df['Resource Type'] = df['layer_geom_type_s'].astype(str) + " data"
+        return df
+
+

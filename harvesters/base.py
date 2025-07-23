@@ -1,73 +1,92 @@
 import os
 import time
-
 import pandas as pd
-from utils.field_order import PRIMARY_FIELD_ORDER  # adjust if you reorganize field orders
 
+from utils.field_order import PRIMARY_FIELD_ORDER  
 from utils.cleaner import basic_cleaning
 from utils.validation import validation_pipeline
 
 class BaseHarvester:
     def __init__(self, config):
-        # Initialize with config, schema paths, logging, etc.
+        """
+        Initialize harvester with a config dictionary. Should include paths to input files and output locations.
+        """
         self.config = config
 
     def load_schema(self):
-        # Load GeoBTAA or other target schema
-        pass
+        """
+        Optional: Load and store any schema you may need (e.g. field lists, data types, validation rules).
+        Override this if your harvester needs to preload schema info.
+        """
+        return None
 
     def fetch(self):
-        # Download raw metadata
-        pass
+        """
+        REQUIRED: Retrieve raw metadata from a source (file, API, etc.).
+        Should return either a list (of records) or a generator.
+        """
+        raise NotImplementedError("Subclasses must implement fetch()")
+
 
     def parse(self, raw_data):
-        # Convert raw responses into structured dicts/lists
-        pass
+        """
+        Default passthrough. Override only if fetch() returns unstructured formats (HTML, raw strings, etc.).
+        """
+        return raw_data
 
     def flatten(self, parsed_data):
-        # (Optional) Expand nested structures to flat records
+        """
+        Default passthrough. Override if records are nested and need flattening to 1 row per record.
+        """
         return parsed_data
 
     def build_dataframe(self, parsed_or_flattened_data):
-        # Map harvested fields to target schema + create DataFrame
-        pass
+        """
+        REQUIRED: Convert a list of dicts into a Pandas DataFrame. Also responsible for mapping source fields to target schema.
+        """
+        raise NotImplementedError("Subclasses must implement build_dataframe()")
+
 
     def derive_fields(self, df):
-        # Generate complex fields
+        """
+        Override to add specific transformations.
+        """
         return df
 
     def add_defaults(self, df):
-        # Add schema-required default values
+        """
+        Optional: Add static default values required by schema (e.g. Provider name, Accrual Method).
+        """
         return df
     
     def add_provenance(self, df):
-        # (Optional) Add metadata about the harvest process
+        """
+        Optional: Add harvest metadata (e.g. timestamp, harvester name) for internal tracking.
+        """
         return df
+
 
     def clean(self, df):
         """
-        Perform data cleaning using the shared utility.
-        Override in subclasses if source-specific cleaning is needed.
+        Shared cleaning logic—removes extra pipes, trims whitespace, deduplicates, etc.
+        Override in subclasses for source-specific cleaning.
         """
         return basic_cleaning(df)
 
 
     def validate(self, df):
         """
-        Perform data validation using the shared pipeline.
-        Override in subclasses to customize validation logic.
+        Shared validation pipeline—logs errors or enforces required fields.
+        Override to skip or customize rules.
         """
-        validation_pipeline(df)  # might log or raise errors
+        validation_pipeline(df)
         return df
+
 
     def write_outputs(self, primary_df: pd.DataFrame, distributions_df: pd.DataFrame = None) -> dict:
         """
         Write the primary and optional distributions DataFrames to CSVs in the outputs directory.
         Returns a dict of written file paths for logging or downstream use.
-
-        Args:
-            primary_df (pd.DataFrame): The main DataFrame of harvested records.
-            distributions_df (pd.DataFrame, optional): DataFrame with distribution links, if applicable.
         """
         today = time.strftime("%Y-%m-%d")
         results = {}
@@ -100,9 +119,8 @@ class BaseHarvester:
 
     def harvest_pipeline(self):
         """
-        Orchestrate full workflow:
-        load_schema → fetch → parse → flatten → build_dataframe →
-        derive_fields → add_defaults → clean → validate → add_provenance → write_outputs
+        Main pipeline orchestrator. Runs all steps in order and writes output files.
+        Subclasses can override specific steps but should not need to modify this method itself.
         """
         self.load_schema()
         raw = self.fetch()
@@ -114,8 +132,8 @@ class BaseHarvester:
             df.pipe(self.derive_fields)
               .pipe(self.add_defaults)
               .pipe(self.add_provenance)
-              .pipe(self.clean)           # uses wrapper method → shared utility
-              .pipe(self.validate)  # uses wrapper
+              .pipe(self.clean)
+              .pipe(self.validate)
         )
 
         results = self.write_outputs(df)
