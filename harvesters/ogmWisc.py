@@ -144,6 +144,7 @@ class OgmWiscHarvester(BaseHarvester):
     
     
     def derive_fields(self, df):
+        df = super().add_defaults(df)
         df = (
             df.pipe(self.ogmWisc_format_temporal_coverage)
             .pipe(self.ogmWisc_flag_georeferenced)
@@ -166,8 +167,7 @@ class OgmWiscHarvester(BaseHarvester):
         return df
     
     def add_provenance(self, df):
-        today = time.strftime('%Y-%m-%d')
-        df['Date Accessioned'] = today
+        df = super().add_provenance(df)
         df['Accrual Method'] = 'GBL-1.0'
         return df
     

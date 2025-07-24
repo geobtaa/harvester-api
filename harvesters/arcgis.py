@@ -112,12 +112,12 @@ class ArcGISHarvester(BaseHarvester):
 
 
     def add_defaults(self, df):
+        df = super().add_defaults(df)
         df['Code'] = df['hub_id']
         df['Provider'] = df['provider']
         df['Display Note'] = "This dataset was automatically cataloged from the provider's ArcGIS Hub. In some cases, information shown here may be out-of-date. Click the 'Visit Source' button to search for items on the original provider's website."
         df['Language'] = 'eng'
         df['Access Rights'] = 'Public'
-        df['Publication State'] = 'published'
         df['Is Part Of'] = df['is_part_of']
         df['Member Of'] = df['member_of']
         df['Spatial Coverage'] = df['spatial_coverage']
@@ -125,8 +125,7 @@ class ArcGISHarvester(BaseHarvester):
         return df
     
     def add_provenance(self, df):
-        today = time.strftime('%Y-%m-%d')
-        df['Date Accessioned'] = today
+        df = super().add_provenance(df)
         df['Accrual Method'] = 'ArcGIS Hub'
         return df
 
