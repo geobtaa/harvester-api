@@ -5,6 +5,14 @@ import yaml
 from utils.file_io import load_local_schema
 from harvesters.pasda import PasdaHarvester
 from harvesters.arcgis import ArcGISHarvester
+from harvesters.ogmWisc import OgmWiscHarvester
+
+HARVESTER_REGISTRY = {
+    "arcgis": ArcGISHarvester,
+    "pasda": PasdaHarvester,
+    "ogmWisc": OgmWiscHarvester,
+}
+
 
 router = APIRouter()
 
@@ -43,15 +51,12 @@ async def run_job(job_id: str):
     # schema = load_local_schema()
     harvester_type = job_cfg.get("type")
 
-    if harvester_type == "arcgis":
-        harvester = ArcGISHarvester(job_cfg)
-    elif harvester_type == "pasda":
-        harvester = PasdaHarvester(job_cfg)
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported harvester type '{harvester_type}'"
-        )
+    harvester_cls = HARVESTER_REGISTRY.get(harvester_type)
+    if not harvester_cls:
+        raise HTTPException(status_code=400, detail=f"Unsupported harvester type '{harvester_type}'")
+
+    harvester = harvester_cls(job_cfg)
+
 
     # Run the full harvester workflow (fetch, normalize, write outputs)
     results = harvester.harvest_pipeline()

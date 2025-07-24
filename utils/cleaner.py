@@ -39,16 +39,20 @@ def reorder_columns(df: pd.DataFrame, field_order: list = FIELD_ORDER) -> pd.Dat
 def strip_text_fields(df: pd.DataFrame) -> pd.DataFrame:
     """
     Strip HTML and unwanted characters from all string fields in the DataFrame.
+    Applies BeautifulSoup cleanup and trims '|', '-', and whitespace.
     """
     def clean_cell(cell):
         if isinstance(cell, str):
             # Remove HTML tags
             text = BeautifulSoup(cell, "html.parser").get_text()
             # Strip unwanted characters
-            return text.strip('|- ')
+            return text.strip().strip('|')
         return cell
 
-    return df.applymap(clean_cell)
+    for col in df.select_dtypes(include=["object", "string"]).columns:
+        df[col] = df[col].map(clean_cell)
+
+    return df
 
 
 def create_date_ranges(df: pd.DataFrame) -> pd.DataFrame:
