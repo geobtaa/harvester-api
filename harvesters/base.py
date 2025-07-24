@@ -27,7 +27,6 @@ class BaseHarvester:
         """
         raise NotImplementedError("Subclasses must implement fetch()")
 
-
     def parse(self, raw_data):
         """
         Default passthrough. Override only if fetch() returns unstructured formats (HTML, raw strings, etc.).
@@ -55,14 +54,19 @@ class BaseHarvester:
 
     def add_defaults(self, df):
         """
-        Optional: Add static default values required by schema (e.g. Provider name, Accrual Method).
+        Add static default values required by schema
+        Override in subclasses if needed
         """
+        df['Publication State'] = 'published'
         return df
     
     def add_provenance(self, df):
         """
-        Optional: Add harvest metadata (e.g. timestamp, harvester name) for internal tracking.
+        Add harvest metadata (e.g. timestamp, harvester name) for internal tracking.
+        Override in subclasses if more detailed provenance is needed.
         """
+        today = time.strftime('%Y-%m-%d')
+        df['Date Accessioned'] = today
         return df
 
 
