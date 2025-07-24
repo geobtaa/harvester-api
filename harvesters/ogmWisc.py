@@ -22,6 +22,22 @@ class OgmWiscHarvester(BaseHarvester):
         self.json_path = self.config.get("json_path")
         self.distribution_types = None  # set to None for now; load later
 
+        # Load spatial counties CSV
+        counties_path = "data/spatial_counties.csv"
+        counties_df = pd.read_csv(counties_path, sep="\t" if "\t" in open(counties_path).readline() else ",")  # support tab or comma
+        counties_df = counties_df.dropna(subset=["County"])  # ensure no blank rows
+
+        # Create lookup dict by base name
+        self.county_lookup = {}
+        for _, row in counties_df.iterrows():
+            name = row["County"]
+            base = name.split("--")[-1].replace(" County", "").strip()
+            self.county_lookup[base] = {
+                "full_name": name,
+                "geometry": row.get("Geometry", ""),
+                "geonames": row.get("GeoNames", "")
+            }
+
     def load_schema(self):
         """
         Loads the distribution_types schema from the shared YAML definition.
@@ -94,12 +110,13 @@ class OgmWiscHarvester(BaseHarvester):
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: '|'.join(x) if isinstance(x, list) else x)
 
-        # --- Parse bounding box from solr_geom ---
-        if 'solr_geom' in df.columns:
-            geom_parts = df['solr_geom'].str.strip('ENVELOPE()').str.split(',', expand=True)
-            if geom_parts.shape[1] == 4:
-                df[['w', 'e', 'n', 's']] = geom_parts
-                df['Bounding Box'] = df[['w', 's', 'e', 'n']].agg(','.join, axis=1)
+        # # --- Parse bounding box from solr_geom ---
+        # if 'solr_geom' in df.columns:
+        #     geom_parts = df['solr_geom'].str.strip('ENVELOPE()').str.split(',', expand=True)
+        #     if geom_parts.shape[1] == 4:
+        #         df[['w', 'e', 'n', 's']] = geom_parts
+        #         df['Bounding Box'] = df[['w', 's', 'e', 'n']].agg(','.join, axis=1)
+
 
         # --- Rename to Aardvark/GeoBTAA field names ---
         rename_map = {
@@ -125,15 +142,18 @@ class OgmWiscHarvester(BaseHarvester):
 
         return df
     
+    
     def derive_fields(self, df):
         df = (
             df.pipe(self.ogmWisc_format_temporal_coverage)
             .pipe(self.ogmWisc_flag_georeferenced)
             .pipe(self.ogmWisc_generate_identifier)
+            .pipe(self.ogmWisc_reorder_bbox)
             .pipe(self.ogmWisc_map_theme_from_subject)
             .pipe(self.ogmWisc_build_display_note)
             .pipe(self.ogmWisc_add_resource_class)
             .pipe(self.ogmWisc_add_resource_type)
+            .pipe(self.ogmWisc_clean_creator_values)
         )
         return df
     
@@ -193,6 +213,24 @@ class OgmWiscHarvester(BaseHarvester):
         return df
 
 
+    def ogmWisc_reorder_bbox(self, df):
+        """
+        Extracts and reorders solr_geom ENVELOPE(w, e, n, s) to 'Bounding Box' as w,s,e,n.
+        """
+        def extract_bbox(val):
+            if val.startswith("ENVELOPE(") and val.endswith(")"):
+                try:
+                    coords = val[len("ENVELOPE("):-1].split(",")
+                    w, e, n, s = [c.strip() for c in coords]
+                    return f"{w},{s},{e},{n}"
+                except Exception:
+                    return None
+            return None
+
+        df["Bounding Box"] = df["solr_geom"].apply(lambda x: extract_bbox(x) if isinstance(x, str) else None)
+        return df
+
+
     def ogmWisc_map_theme_from_subject(self, df):
         theme_map = {
             "Farming": "Agriculture",
@@ -244,4 +282,52 @@ class OgmWiscHarvester(BaseHarvester):
             df['Resource Type'] = df['layer_geom_type_s'].astype(str) + " data"
         return df
 
+    def ogmWisc_clean_creator_values(self, df):
+        """
+        Clean the 'Creator' column in the dataframe by:
+        - Removing HTML tags and extra characters
+        - Normalizing Wisconsin county and city names
+        - Appending geometry and GeoNames values for matching Wisconsin counties
+        """
+
+        # Load only Wisconsin counties
+        counties_df = pd.read_csv("data/spatial_counties.csv", encoding="utf-8", dtype=str)
+        wisconsin_df = counties_df[counties_df["County"].str.startswith("Wisconsin--")].copy()
+
+        # Create lookup dicts for fast matching
+        wisconsin_df["base_name"] = wisconsin_df["County"].str.replace("Wisconsin--", "").str.replace(" County", "")
+        county_lookup = dict(zip(wisconsin_df["base_name"], wisconsin_df["County"]))
+        geom_lookup = dict(zip(wisconsin_df["County"], wisconsin_df["Geometry"]))
+        geonames_lookup = dict(zip(wisconsin_df["County"], wisconsin_df["GeoNames"]))
+
+        def normalize_creator(value):
+            if not isinstance(value, str) or not value.strip():
+                return value  # Skip blanks or non-strings
+
+            # Strip HTML and unwanted chars
+            text = value.strip().strip("|- ")
+
+            # Check for exact county match (e.g., "Adams County")
+            if text.endswith(" County"):
+                base = text[:-len(" County")]
+                if base in county_lookup:
+                    return county_lookup[base]
+
+            # Check for "City of ..." format
+            if text.startswith("City of "):
+                city_name = text.replace("City of ", "", 1).strip()
+                return f"Wisconsin--{city_name}"
+
+        # Apply normalization
+        df["Creator"] = df["Creator"].apply(normalize_creator)
+
+        # Append Geometry and GeoNames where matched
+        def get_field_or_blank(row, lookup):
+            creator = row.get("Creator", "")
+            return lookup.get(creator, "")
+
+        df["Geometry"] = df.apply(lambda row: get_field_or_blank(row, geom_lookup), axis=1)
+        df["GeoNames"] = df.apply(lambda row: get_field_or_blank(row, geonames_lookup), axis=1)
+
+        return df
 

@@ -114,3 +114,39 @@ Use these naming patterns to stay consistent:
 Class: MySourceHarvester
 File: mysource.py
 Helper functions: mysource_ prefix
+
+
+More on each class:
+
+### fetch()
+
+Purpose:
+Responsible for retrieving raw metadata. This might be:
+
+- A local directory of JSON files
+- An API response (JSON, XML, HTML, etc.)
+- A remote file (like CSV or zipped archive)
+
+When to use:
+Always—every harvester needs some way to get raw input.
+
+What it returns:
+Usually a list of raw items (e.g., raw JSON strings, HTML blocks, or binary blobs).
+
+### parse()
+
+Purpose:
+Convert raw input into structured Python objects (dicts/lists). For example:
+
+- Convert JSON strings into dict
+- Use BeautifulSoup to turn HTML into structured data
+- Normalize inconsistent formats
+
+When to use:
+When the result of fetch() is not already a structured dict or list.
+
+- If fetch() loads JSON files with json.load(), parse() is not necessary and may just return the input.
+- If fetch() retrieves raw HTML or bytes, parse() is essential.
+
+What it returns:
+List of structured Python dictionaries (or a single dict/list).

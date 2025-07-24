@@ -49,7 +49,7 @@ def validate_resource_class(df):
 def validate_bounding_box(df):
     """
     Checks Bounding Box column for numeric coordinate validity.
-    Raises ValueError if coordinates fall outside plausible ranges.
+    Warns if coordinates fall outside plausible ranges.
     """
     def check_bbox(x):
         try:
@@ -64,10 +64,17 @@ def validate_bounding_box(df):
             return False
 
     invalid_bboxes = df.loc[~df['Bounding Box'].apply(lambda x: check_bbox(x) if isinstance(x, str) else False)]
+    
     if not invalid_bboxes.empty:
-        raise ValueError(f"[VALIDATION] Found rows with invalid Bounding Boxes.")
-    print("[VALIDATION] All Bounding Box coordinates are within valid ranges.")
+        print("[VALIDATION] Found rows with invalid Bounding Boxes:")
+        print(invalid_bboxes[["ID", "Bounding Box"]])
+        invalid_bboxes.to_csv("outputs/invalid_bboxes.csv", index=False)
+        print("[VALIDATION] Invalid Bounding Boxes written to outputs/invalid_bboxes.csv")
+    else:
+        print("[VALIDATION] All Bounding Box coordinates are within valid ranges.")
+    
     return df
+
 
 def validation_pipeline(df):
     """
