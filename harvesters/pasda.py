@@ -9,8 +9,11 @@ from bs4 import BeautifulSoup
 # Project-specific
 from utils.distribution_writer import generate_secondary_table
 from harvesters.base import BaseHarvester
-from utils.cleaner import spatial_cleaning
-from utils.validation import validation_pipeline
+# from utils.dataframe_cleaner import basic_cleaning
+from utils.creator_match import creator_match
+from utils.temporal_fields import infer_temporal_coverage_from_title, create_date_range
+from utils.title_formatter import title_wizard
+
 
 class PasdaHarvester(BaseHarvester):
 
@@ -22,14 +25,6 @@ class PasdaHarvester(BaseHarvester):
 
     def load_reference_data(self):
         super().load_reference_data()
-
-        # Load JSON of county names
-        locations_path = self.config.get("locations_json", "data/locations.json")
-        with open(locations_path, "r", encoding="utf-8") as f:
-            locations = json.load(f)
-
-        self.counties_in_pennsylvania = locations["counties_in_pennsylvania"]
-        self.cities_in_pennsylvania = locations["cities_in_pennsylvania"]
 
         # Load spatial CSV with bbox and geonames
         spatial_csv_path = "data/spatial_counties.csv"
@@ -117,14 +112,18 @@ class PasdaHarvester(BaseHarvester):
         """
         Apply PASDA-specific transformations in order.
         """
+        df = creator_match(df, state="Pennsylvania")
+
         return (
             df.pipe(self.pasda_drop_incomplete)
-              .pipe(self.pasda_drop_federal)
-              .pipe(self.pasda_transform_titles)
-              .pipe(self.pasda_format_date_ranges)
-              .pipe(self.pasda_append_spatial_fields)
+            .pipe(self.pasda_drop_federal)
+            .pipe(self.pasda_spatial_coverage)
+            .pipe(self.pasda_temporal_coverage)
+            .pipe(self.pasda_format_date_ranges)
+            .pipe(self.pasda_reformat_titles)
         )
-    
+
+   
     def add_defaults(self, df):
         df = super().add_defaults(df)
         df['Code'] = '08a-01'
@@ -145,12 +144,11 @@ class PasdaHarvester(BaseHarvester):
         return df
     
     def clean(self, df):
-        df = spatial_cleaning(df)
         df = super().clean(df)
         return df
 
     def validate(self, df):
-        validation_pipeline(df)
+        df = super().validate(df)
         return df
 
     def write_outputs(self, primary_df, distributions_df=None):
@@ -186,96 +184,29 @@ class PasdaHarvester(BaseHarvester):
             return df
 
         return df[~df['Creator'].isin(federal)].reset_index(drop=True)
+    
+    def pasda_spatial_coverage(self, df):
+        """
+        Set spatial metadata fields:
+        - Derive 'Spatial Coverage' from 'Creator' using FAST format.
+        - Fill in missing 'Bounding Box', 'Geometry', and 'GeoNames' with Pennsylvania defaults.
+        """
 
-
-    def pasda_format_date_ranges(self, df):
-        if df.empty or 'Date Issued' not in df.columns:
-            print("[PASDA] Skipping date range formatting: 'Date Issued' column not found or DataFrame is empty.")
-            return df
-
-        def make_range(s):
-            years = re.findall(r"(\d{4})", s)
-            return f"{years[0]}-{years[-1]}" if years else s
-
-        df['Date Range'] = df['Date Issued'].apply(make_range)
-        return df
-
-
-    def pasda_transform_titles(self, df):
-        if df.empty or 'Alternative Title' not in df.columns or 'Date Issued' not in df.columns:
-            print("[PASDA] Skipping title transformation: required columns not found or DataFrame is empty.")
-            df['Title'] = ''
+        if df.empty or 'Creator' not in df.columns:
+            print("[PASDA] Skipping spatial metadata: 'Creator' column not found or DataFrame is empty.")
             df['Spatial Coverage'] = ''
             return df
 
-        def safe_transform(row):
-            try:
-                title, coverage = self.pasda_transform_title(row)
-                return pd.Series([title, coverage])
-            except Exception as e:
-                print(f"[PASDA] Title transform error: {e}")
-                return pd.Series(['', ''])
+        # Step 1: Set Spatial Coverage
+        def format_coverage(creator):
+            if not isinstance(creator, str) or not creator.startswith("Pennsylvania--"):
+                return "Pennsylvania"
+            return f"{creator}|Pennsylvania"
 
-        df[['Title', 'Spatial Coverage']] = df.apply(safe_transform, axis=1)
-        return df
+        df['Spatial Coverage'] = df['Creator'].apply(format_coverage)
 
-
-    def pasda_transform_title(self, row):
-        alt_title = row.get('Alternative Title', '')
-        coverage = ""
-
-        # Replace county names
-        for county in self.counties_in_pennsylvania:
-            if re.search(f"{county} County", alt_title, re.I):
-                alt_title = re.sub(f"{county} County", f"[Pennsylvania--{county} County]", alt_title, flags=re.I, count=1)
-                coverage = f"{county} County"
-                break
-        else:
-            for city in self.cities_in_pennsylvania:
-                if re.search(rf"\b{city}\b", alt_title, re.I):
-                    alt_title = re.sub(rf"\b{city}\b", f"[Pennsylvania--{city}]", alt_title, flags=re.I, count=1)
-                    coverage = city
-                    break
-            else:
-                alt_title = re.sub(r"\b(PA|Pennsylvania)\b", "[Pennsylvania]", alt_title, flags=re.I, count=1)
-                coverage = "Pennsylvania"
-
-        bracket_content = re.findall(r'\[(.*?)\]', alt_title)
-        if bracket_content:
-            alt_title = re.sub(r'\[.*?\]', '', alt_title).strip()
-            alt_title = f"{alt_title} [{bracket_content[0]}]"
-
-        alt_title = re.sub(r"For\s+\[", "[", alt_title, flags=re.I)
-        alt_title = re.sub(r"For The\s+\[", "[", alt_title, flags=re.I)
-        alt_title = re.sub(r"For The City Of\s+\[", "[", alt_title, flags=re.I)
-        alt_title = re.sub(r"^\s*-\s*|\s*-\s*(?=\[)", "", alt_title)
-
-        if alt_title:
-            alt_title = alt_title[0].capitalize() + alt_title[1:]
-
-        alt_title += f" {{{row.get('Date Issued', '')}}}"
-
-        return alt_title, coverage
-
-
-    def pasda_append_spatial_fields(self, df):
-        # Ensure the 'Spatial Coverage' column exists — create if missing
-        if 'Spatial Coverage' not in df.columns:
-            print("[PASDA] 'Spatial Coverage' column not found. Creating blank column.")
-            df['Spatial Coverage'] = ''
-
-        # Perform the merge even if many values are blank or unmatched
-        if 'County' not in self.spatial_data.columns:
-            print("[PASDA] Spatial data missing 'County' column. Skipping spatial join.")
-            merged_df = df.copy()
-        else:
-            merged_df = pd.merge(
-                df, self.spatial_data, left_on='Spatial Coverage', right_on='County', how='left'
-            )
-            print("[PASDA] Merged harvested records with spatial data on 'Spatial Coverage'.")
-
-        # Default values for any missing spatial metadata
-        default_values = {
+        # Step 2: Fill in missing spatial metadata
+        defaults = {
             'Bounding Box': "-80.52,39.72,-74.69,42.27",
             'Geometry': (
                 "MultiPolygon(((-75.6 39.8, -75.8 39.7, -80.5 39.7, -80.5 42.3, "
@@ -285,14 +216,40 @@ class PasdaHarvester(BaseHarvester):
             'GeoNames': "http://sws.geonames.org/6254927"
         }
 
-        for column, default in default_values.items():
-            if column in merged_df.columns:
-                missing_count = merged_df[column].isna().sum()
-                merged_df[column] = merged_df[column].fillna(default)
+        for column, default in defaults.items():
+            if column not in df.columns:
+                df[column] = default
             else:
-                missing_count = len(merged_df)
-                merged_df[column] = default
-            print(f"[PASDA] Set default for missing '{column}' values ({missing_count} rows updated).")
+                df[column] = df[column].replace("", default)
 
-        return merged_df
+        return df
+    
+    def pasda_temporal_coverage(self, df):
+        """
+        Adds a 'Temporal Coverage' column based on Title or Date Modified.
+        """
+        df["Temporal Coverage"] = df.apply(infer_temporal_coverage_from_title, axis=1)
+        return df
+    
+    def pasda_format_date_ranges(self, df):
+        """
+        Adds a 'Date Range' column based on 'Temporal Coverage', 'Date Modified', or 'Date Issued'.
+        """
+        df["Date Range"] = df.apply(
+            lambda row: create_date_range(row, row.get("Temporal Coverage", "")),
+            axis=1
+        )
+        return df
+
+    def pasda_reformat_titles(self, df):
+        """
+        Updates the Title field using a formatting pipeline.
+        """
+        return title_wizard(df)
+        
+
+
+
+
+
 

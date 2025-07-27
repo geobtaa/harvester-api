@@ -3,7 +3,8 @@ import time
 import pandas as pd
 
 from utils.field_order import PRIMARY_FIELD_ORDER  
-from utils.cleaner import basic_cleaning
+from utils.dataframe_cleaner import dataframe_cleaning
+from utils.spatial_cleaner import spatial_cleaning
 from utils.validation import validation_pipeline
 from utils.distribution_writer import load_distribution_types
 
@@ -31,13 +32,13 @@ class BaseHarvester:
 
     def parse(self, raw_data):
         """
-        Default passthrough. Override only if fetch() returns unstructured formats (HTML, raw strings, etc.).
+        Default passthrough. Parsing is for unstructured formats, like HTML.
         """
         return raw_data
 
     def flatten(self, parsed_data):
         """
-        Default passthrough. Override if records are nested and need flattening to 1 row per record.
+        Default passthrough. Use if records are nested and need flattening to 1 row per record.
         """
         return parsed_data
 
@@ -77,7 +78,9 @@ class BaseHarvester:
         Shared cleaning logic—removes extra pipes, trims whitespace, deduplicates, etc.
         Override in subclasses for source-specific cleaning.
         """
-        return basic_cleaning(df)
+        df = dataframe_cleaning(df)
+        df = spatial_cleaning(df)
+        return df
 
 
     def validate(self, df):
