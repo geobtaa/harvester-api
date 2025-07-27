@@ -33,5 +33,5 @@ outputs/
 # Ignore everything inside inputs and outputs/ but keep the folders
 inputs/*
 !inputs/.gitkeep
-!outputs/*
+outputs/*
 !outputs/.gitkeep
