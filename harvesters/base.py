@@ -3,8 +3,10 @@ import time
 import pandas as pd
 
 from utils.field_order import PRIMARY_FIELD_ORDER  
-from utils.cleaner import basic_cleaning
+from utils.dataframe_cleaner import dataframe_cleaning
+from utils.spatial_cleaner import spatial_cleaning
 from utils.validation import validation_pipeline
+from utils.distribution_writer import load_distribution_types
 
 class BaseHarvester:
     def __init__(self, config):
@@ -12,13 +14,14 @@ class BaseHarvester:
         Initialize harvester with a config dictionary. Should include paths to input files and output locations.
         """
         self.config = config
+        self.distribution_types = None  # Shared resource
 
-    def load_schema(self):
+    def load_reference_data(self):
         """
-        Optional: Load and store any schema you may need (e.g. field lists, data types, validation rules).
-        Override this if your harvester needs to preload schema info.
+        Optional: Load additional lookup tables or reference data needed for harvesting.
+        Override this method in subclasses that need custom data (e.g., county lookups).
         """
-        return None
+        self.distribution_types = load_distribution_types()
 
     def fetch(self):
         """
@@ -29,13 +32,13 @@ class BaseHarvester:
 
     def parse(self, raw_data):
         """
-        Default passthrough. Override only if fetch() returns unstructured formats (HTML, raw strings, etc.).
+        Default passthrough. Parsing is for unstructured formats, like HTML.
         """
         return raw_data
 
     def flatten(self, parsed_data):
         """
-        Default passthrough. Override if records are nested and need flattening to 1 row per record.
+        Default passthrough. Use if records are nested and need flattening to 1 row per record.
         """
         return parsed_data
 
@@ -75,7 +78,9 @@ class BaseHarvester:
         Shared cleaning logic—removes extra pipes, trims whitespace, deduplicates, etc.
         Override in subclasses for source-specific cleaning.
         """
-        return basic_cleaning(df)
+        df = dataframe_cleaning(df)
+        df = spatial_cleaning(df)
+        return df
 
 
     def validate(self, df):
@@ -126,7 +131,7 @@ class BaseHarvester:
         Main pipeline orchestrator. Runs all steps in order and writes output files.
         Subclasses can override specific steps but should not need to modify this method itself.
         """
-        self.load_schema()
+        self.load_reference_data()
         raw = self.fetch()
         parsed = self.parse(raw)
         flat = self.flatten(parsed)

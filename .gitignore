@@ -30,6 +30,8 @@ outputs/
 # Environment files
 .env
 
-# Ignore everything inside data/ogmWisc but keep the folder
-data/ogmWisc/*
-!data/ogmWisc/.gitkeep
+# Ignore everything inside inputs and outputs/ but keep the folders
+inputs/*
+!inputs/.gitkeep
+outputs/*
+!outputs/.gitkeep

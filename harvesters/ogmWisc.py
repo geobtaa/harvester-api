@@ -1,48 +1,34 @@
 import os
-import csv
 import json
-import time
 import re
-import datetime
 import logging
 
 import pandas as pd
-from urllib.parse import urlparse, parse_qs
 
 from harvesters.base import BaseHarvester
-from utils.distribution_writer import load_distribution_types, generate_secondary_table
-from utils.cleaner import spatial_cleaning
-from utils.validation import validation_pipeline
-from utils.distribution_writer import load_distribution_types
+from utils.distribution_writer import generate_secondary_table
 
 
 class OgmWiscHarvester(BaseHarvester):
     def __init__(self, config):
         super().__init__(config)
         self.json_path = self.config.get("json_path")
-        self.distribution_types = None  # set to None for now; load later
+        self.county_lookup = {} 
 
-        # Load spatial counties CSV
-        counties_path = "data/spatial_counties.csv"
-        counties_df = pd.read_csv(counties_path, sep="\t" if "\t" in open(counties_path).readline() else ",")  # support tab or comma
-        counties_df = counties_df.dropna(subset=["County"])  # ensure no blank rows
+    def load_reference_data(self):
+        super().load_reference_data()  # Sets self.distribution_types
+        counties_path = "reference_data/spatial_counties.csv"
+        counties_df = pd.read_csv(counties_path, sep="\t" if "\t" in open(counties_path).readline() else ",")
+        counties_df = counties_df.dropna(subset=["County"])
 
-        # Create lookup dict by base name
-        self.county_lookup = {}
-        for _, row in counties_df.iterrows():
-            name = row["County"]
-            base = name.split("--")[-1].replace(" County", "").strip()
-            self.county_lookup[base] = {
-                "full_name": name,
+        self.county_lookup = {
+            row["County"].split("--")[-1].replace(" County", "").strip(): {
+                "full_name": row["County"],
                 "geometry": row.get("Geometry", ""),
                 "geonames": row.get("GeoNames", "")
             }
-
-    def load_schema(self):
-        """
-        Loads the distribution_types schema from the shared YAML definition.
-        """
-        self.distribution_types = load_distribution_types()
+            for _, row in counties_df.iterrows()
+        }
 
     def fetch(self):
         """
@@ -110,13 +96,6 @@ class OgmWiscHarvester(BaseHarvester):
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: '|'.join(x) if isinstance(x, list) else x)
 
-        # # --- Parse bounding box from solr_geom ---
-        # if 'solr_geom' in df.columns:
-        #     geom_parts = df['solr_geom'].str.strip('ENVELOPE()').str.split(',', expand=True)
-        #     if geom_parts.shape[1] == 4:
-        #         df[['w', 'e', 'n', 's']] = geom_parts
-        #         df['Bounding Box'] = df[['w', 's', 'e', 'n']].agg(','.join, axis=1)
-
 
         # --- Rename to Aardvark/GeoBTAA field names ---
         rename_map = {
@@ -146,7 +125,8 @@ class OgmWiscHarvester(BaseHarvester):
     def derive_fields(self, df):
         df = super().add_defaults(df)
         df = (
-            df.pipe(self.ogmWisc_format_temporal_coverage)
+            df
+            .pipe(self.ogmWisc_format_temporal_coverage)
             .pipe(self.ogmWisc_flag_georeferenced)
             .pipe(self.ogmWisc_generate_identifier)
             .pipe(self.ogmWisc_reorder_bbox)
@@ -172,19 +152,16 @@ class OgmWiscHarvester(BaseHarvester):
         return df
     
     def clean(self, df):
-        df = spatial_cleaning(df)
         df = super().clean(df)
         return df
 
     def validate(self, df):
-        validation_pipeline(df)
+        df = super().validate(df)
         return df
 
     def write_outputs(self, primary_df, distributions_df=None):
         distributions_df = generate_secondary_table(primary_df.copy(), self.distribution_types)
         return super().write_outputs(primary_df, distributions_df)
-
-
 
 
 # --- OGM Wisconsin-Specific Field Derive Functions ---
@@ -287,14 +264,14 @@ class OgmWiscHarvester(BaseHarvester):
         Clean the 'Creator' column in the dataframe by:
         - Removing HTML tags and extra characters
         - Normalizing Wisconsin county and city names
-        - Appending geometry and GeoNames values for matching Wisconsin counties
+        - Keeping original value if no match is found
+        - Appending Geometry and GeoNames values only where matched
         """
-
         # Load only Wisconsin counties
-        counties_df = pd.read_csv("data/spatial_counties.csv", encoding="utf-8", dtype=str)
+        counties_df = pd.read_csv("reference_data/spatial_counties.csv", encoding="utf-8", dtype=str)
         wisconsin_df = counties_df[counties_df["County"].str.startswith("Wisconsin--")].copy()
 
-        # Create lookup dicts for fast matching
+        # Create lookup dicts
         wisconsin_df["base_name"] = wisconsin_df["County"].str.replace("Wisconsin--", "").str.replace(" County", "")
         county_lookup = dict(zip(wisconsin_df["base_name"], wisconsin_df["County"]))
         geom_lookup = dict(zip(wisconsin_df["County"], wisconsin_df["Geometry"]))
@@ -302,32 +279,36 @@ class OgmWiscHarvester(BaseHarvester):
 
         def normalize_creator(value):
             if not isinstance(value, str) or not value.strip():
-                return value  # Skip blanks or non-strings
+                return value  # Leave blank or non-string as-is
 
-            # Strip HTML and unwanted chars
+            # Strip unwanted characters
             text = value.strip().strip("|- ")
 
-            # Check for exact county match (e.g., "Adams County")
+            # County match (e.g., "Adams County")
             if text.endswith(" County"):
                 base = text[:-len(" County")]
                 if base in county_lookup:
                     return county_lookup[base]
 
-            # Check for "City of ..." format
+            # City match (e.g., "City of Fitchburg")
             if text.startswith("City of "):
                 city_name = text.replace("City of ", "", 1).strip()
                 return f"Wisconsin--{city_name}"
 
-        # Apply normalization
+            # Return original if no match
+            return text
+
+        # Normalize Creator column
         df["Creator"] = df["Creator"].apply(normalize_creator)
 
-        # Append Geometry and GeoNames where matched
+        # Only apply Geometry and GeoNames to matched counties
         def get_field_or_blank(row, lookup):
-            creator = row.get("Creator", "")
-            return lookup.get(creator, "")
+            val = row.get("Creator", "")
+            return lookup.get(val, "")
 
         df["Geometry"] = df.apply(lambda row: get_field_or_blank(row, geom_lookup), axis=1)
         df["GeoNames"] = df.apply(lambda row: get_field_or_blank(row, geonames_lookup), axis=1)
 
         return df
+
 
