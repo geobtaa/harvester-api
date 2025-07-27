@@ -1,20 +1,16 @@
 """
 ArcGIS Harvester
 
-This module defines:
-- ArcGISHarvester (inherits from BaseHarvester)
-- ArcGIS-specific data parsing and field derivation functions
 """
 
 import csv
 import requests
 import pandas as pd
-import time
 import re
 from urllib.parse import urlparse, parse_qs
 
 from harvesters.base import BaseHarvester
-from utils.distribution_writer import load_distribution_types, generate_secondary_table
+from utils.distribution_writer import generate_secondary_table
 from utils.cleaner import spatial_cleaning
 from utils.validation import validation_pipeline
 
@@ -22,10 +18,9 @@ from utils.validation import validation_pipeline
 class ArcGISHarvester(BaseHarvester):
     def __init__(self, config):
         super().__init__(config)
-        self.distribution_types = None
 
-    def load_schema(self):
-        self.distribution_types = load_distribution_types()
+    def load_reference_data(self):
+        super().load_reference_data()
 
     def fetch(self):
         hub_file = self.config.get("hub_list_csv")
@@ -52,7 +47,6 @@ class ArcGISHarvester(BaseHarvester):
                     'default_bbox': row.get('Bounding Box', ''),
                     'raw_data': data
                 }
-
                 yield f"[ArcGIS] ✅ Fetched {hub_id} — {row.get('Title', 'No Title')}"
                 yield record  # this sends the record downstream
                 

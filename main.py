@@ -85,7 +85,7 @@ async def run_arcgis_stream():
             config = yaml.safe_load(f)
 
         harvester = ArcGISHarvester(config)
-        harvester.load_schema()
+        harvester.load_reference_data()
 
         fetched_records = []
         for item in harvester.fetch():
@@ -115,3 +115,33 @@ async def run_arcgis_stream():
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+@app.get("/run-pasda-stream")
+async def run_pasda_stream():
+    from harvesters.pasda import PasdaHarvester
+
+    async def event_stream():
+        config_path = "config/pasda.yaml"
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        harvester = PasdaHarvester(config)
+        harvester.load_reference_data()
+
+        yield "data: ✅ Starting PASDA harvest...\n\n"
+        raw_html = harvester.fetch()
+        yield "data: ✅ Fetched HTML, now parsing...\n\n"
+
+        parsed = harvester.parse(raw_html)
+        flat = harvester.flatten(parsed)
+        df = harvester.build_dataframe(flat)
+        df = harvester.derive_fields(df)
+        df = harvester.add_defaults(df)
+        df = harvester.add_provenance(df)
+        df = harvester.clean(df)
+        harvester.validate(df)
+        harvester.write_outputs(df)
+
+        yield "data: ✅ PASDA harvest complete. Check output folder.\n\n"
+        yield "data: DONE\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

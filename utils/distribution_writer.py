@@ -17,10 +17,11 @@ def load_distribution_types(yaml_path="schemas/distribution_types.yaml"):
 
 def build_secondary_table(df, distribution_types, id_field="ID"):
     """
-    Returns a DataFrame with standardized columns:
+    Builds a secondary table with the following standardized columns:
     friendlier_id, reference_type, distribution_url, label.
 
-    Matches each 'variable' column in the DataFrame to its distribution type from the YAML config.
+    The 'label' value is only filled in when reference_type is 'download'.
+    For all other reference types, label is left blank.
     """
     rows = []
 
@@ -32,19 +33,21 @@ def build_secondary_table(df, distribution_types, id_field="ID"):
                     friendlier_id = row.get(id_field, "")
                     url = row.get(variable)
 
+                    # Case 1: URL is a single string
                     if isinstance(url, str) and url.strip():
                         rows.append({
                             "friendlier_id": friendlier_id,
                             "reference_type": ref_key,
                             "distribution_url": url,
-                            "label": row.get("Format", "")
+                            "label": row.get("Format", "") if ref_key == "download" else ""
                         })
 
+                    # Case 2: URL is a list (e.g., ogmWisc multi-download)
                     elif isinstance(url, list):
                         for entry in url:
                             if isinstance(entry, dict):
-                                label = entry.get("label", "")
                                 dist_url = entry.get("url", "")
+                                label = entry.get("label", "") if ref_key == "download" else ""
                                 if dist_url:
                                     rows.append({
                                         "friendlier_id": friendlier_id,
@@ -57,7 +60,7 @@ def build_secondary_table(df, distribution_types, id_field="ID"):
                                     "friendlier_id": friendlier_id,
                                     "reference_type": ref_key,
                                     "distribution_url": entry,
-                                    "label": ""
+                                    "label": ""  # List of strings never has label
                                 })
 
     return pd.DataFrame(rows)

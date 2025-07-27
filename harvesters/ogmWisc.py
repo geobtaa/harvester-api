@@ -1,48 +1,36 @@
 import os
-import csv
 import json
-import time
 import re
-import datetime
 import logging
 
 import pandas as pd
-from urllib.parse import urlparse, parse_qs
 
 from harvesters.base import BaseHarvester
-from utils.distribution_writer import load_distribution_types, generate_secondary_table
+from utils.distribution_writer import generate_secondary_table
 from utils.cleaner import spatial_cleaning
 from utils.validation import validation_pipeline
-from utils.distribution_writer import load_distribution_types
 
 
 class OgmWiscHarvester(BaseHarvester):
     def __init__(self, config):
         super().__init__(config)
         self.json_path = self.config.get("json_path")
-        self.distribution_types = None  # set to None for now; load later
+        self.county_lookup = {} 
 
-        # Load spatial counties CSV
+    def load_reference_data(self):
+        super().load_reference_data()  # Sets self.distribution_types
         counties_path = "data/spatial_counties.csv"
-        counties_df = pd.read_csv(counties_path, sep="\t" if "\t" in open(counties_path).readline() else ",")  # support tab or comma
-        counties_df = counties_df.dropna(subset=["County"])  # ensure no blank rows
+        counties_df = pd.read_csv(counties_path, sep="\t" if "\t" in open(counties_path).readline() else ",")
+        counties_df = counties_df.dropna(subset=["County"])
 
-        # Create lookup dict by base name
-        self.county_lookup = {}
-        for _, row in counties_df.iterrows():
-            name = row["County"]
-            base = name.split("--")[-1].replace(" County", "").strip()
-            self.county_lookup[base] = {
-                "full_name": name,
+        self.county_lookup = {
+            row["County"].split("--")[-1].replace(" County", "").strip(): {
+                "full_name": row["County"],
                 "geometry": row.get("Geometry", ""),
                 "geonames": row.get("GeoNames", "")
             }
-
-    def load_schema(self):
-        """
-        Loads the distribution_types schema from the shared YAML definition.
-        """
-        self.distribution_types = load_distribution_types()
+            for _, row in counties_df.iterrows()
+        }
 
     def fetch(self):
         """
@@ -110,13 +98,6 @@ class OgmWiscHarvester(BaseHarvester):
             if col in df.columns:
                 df[col] = df[col].apply(lambda x: '|'.join(x) if isinstance(x, list) else x)
 
-        # # --- Parse bounding box from solr_geom ---
-        # if 'solr_geom' in df.columns:
-        #     geom_parts = df['solr_geom'].str.strip('ENVELOPE()').str.split(',', expand=True)
-        #     if geom_parts.shape[1] == 4:
-        #         df[['w', 'e', 'n', 's']] = geom_parts
-        #         df['Bounding Box'] = df[['w', 's', 'e', 'n']].agg(','.join, axis=1)
-
 
         # --- Rename to Aardvark/GeoBTAA field names ---
         rename_map = {
@@ -146,7 +127,8 @@ class OgmWiscHarvester(BaseHarvester):
     def derive_fields(self, df):
         df = super().add_defaults(df)
         df = (
-            df.pipe(self.ogmWisc_format_temporal_coverage)
+            df
+            .pipe(self.ogmWisc_format_temporal_coverage)
             .pipe(self.ogmWisc_flag_georeferenced)
             .pipe(self.ogmWisc_generate_identifier)
             .pipe(self.ogmWisc_reorder_bbox)
@@ -183,8 +165,6 @@ class OgmWiscHarvester(BaseHarvester):
     def write_outputs(self, primary_df, distributions_df=None):
         distributions_df = generate_secondary_table(primary_df.copy(), self.distribution_types)
         return super().write_outputs(primary_df, distributions_df)
-
-
 
 
 # --- OGM Wisconsin-Specific Field Derive Functions ---
