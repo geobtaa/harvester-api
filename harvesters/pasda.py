@@ -27,7 +27,7 @@ class PasdaHarvester(BaseHarvester):
         super().load_reference_data()
 
         # Load spatial CSV with bbox and geonames
-        spatial_csv_path = "data/spatial_counties.csv"
+        spatial_csv_path = "reference_data/spatial_counties.csv"
         self.spatial_data = pd.read_csv(spatial_csv_path)
 
     def fetch(self):

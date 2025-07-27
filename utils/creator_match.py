@@ -4,7 +4,7 @@ import re
 import pandas as pd
 import re
 
-def creator_match(df, state: str, county_data_path: str = "data/spatial_counties.csv"):
+def creator_match(df, state: str, county_data_path: str = "reference_data/spatial_counties.csv"):
     """
     Clean and enrich the 'Creator' field based on county and city matches for a given U.S. state.
     Adds Geometry, GeoNames, and Bounding Box if missing and available in the reference sheet.
