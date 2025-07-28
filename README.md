@@ -1,6 +1,6 @@
 # Metadata Harvester API Toolkit
 
-This repository contains the **early framework** for a new, API-driven metadata harvesting toolkit designed to support our evolving metadata infrastructure.
+This repository contains an API-driven metadata harvesting toolkit.
 
 - Built on **FastAPI** for orchestration  
 - Implements a modular **harvesting architecture** 
@@ -9,38 +9,25 @@ This repository contains the **early framework** for a new, API-driven metadata 
 
 ---
 
-## Current Features
-
-- `/schema` endpoint: serves our canonical metadata schema  
-- `/jobs` endpoint: lists available harvesting jobs  
-- `/jobs/{id}/run` endpoint: executes harvesters on demand  
-- Basic admin web UI to trigger harvests  
-
----
-
-## Status
-
-This is an **early proof of concept** to demonstrate the integration of our metadata harvesting workflows with a modern API stack. Functionality is limited but lays the foundation for future enhancements, including:
-
-- Adding more harvesting types (e.g., CKAN, Socrata)  
-- Incorporating schema validation and enrichment  
-- Integrating with a metadata editor  
-
----
-
 ## Directory Overview
 
-```
-- data/          # Input files (e.g., ArcGIS Hub lists, gazetteers)
-- harvesters/    # harvester modules
-- config/        # YAML configs for each harvesting job
-- outputs/       # Harvested metadata CSV outputs
-- routers/       # FastAPI endpoints
-- schemas/       # Canonical metadata schema
-- static/        # Admin web UI
-- utils/         # Shared utilities
-- main.py        # FastAPI app entry point
-```
+
+| Folder/File | Description |
+| ----- | ----- |
+| `main.py` | Entry point for running harvesting routines manually or via scripts |
+|  |  |
+| `harvesters/` | Contains source-specific harvester modules, each subclassing the base harvester class |
+| `harvesters/base.py` | Defines the `BaseHarvester` class with the standard pipeline: fetch → parse → flatten |
+| `utils/` | Shared utility functions used across harvesters (e.g., title formatting, spatial/temporal cleaning) |
+| `routers/` | FastAPI endpoints for running harvesters via HTTP routes or background jobs |
+| `schemas/` | YAML metadata schemas used for field validation and formatting |
+| `reference_data/` | External controlled vocabularies, lookup tables, or enrichment data (e.g., spatial or organization info) |
+| `inputs/` | Source-specific configuration or input files, such as CSVs or cached HTML pages |
+| `outputs/` | Processed metadata outputs, typically saved as CSV or JSON |
+| `config/` | Optional config files for customizing runtime parameters or deployment settings |
+| `static/` | Static HTML pages or assets for lightweight documentation or interface testing |
+| `requirements.txt` | Lists required Python dependencies |
+
 
 ## Setup instructions
 
