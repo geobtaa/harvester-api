@@ -4,3 +4,4 @@ pydantic
 pyyaml
 requests
 pandas
+python-multipart
