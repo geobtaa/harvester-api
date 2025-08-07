@@ -6,10 +6,21 @@ def load_yaml_file(path):
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
     
-def load_local_schema(schema_path="schemas/geobtaa_schema.yaml"):
-    """Load the local metadata schema from YAML."""
-    with open(schema_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+def load_local_schema(schema_path="schemas/geobtaa_schema.csv") -> dict:
+    """
+    Load the local metadata schema from CSV.
+    Returns a dictionary with 'primaryKey' and 'fields' for compatibility.
+    """
+    df = pd.read_csv(schema_path, dtype=str).fillna("")
+    df["order"] = df["order"].astype(int)
+
+    fields = df.sort_values("order").to_dict(orient="records")
+    primary_keys = ["ID"]  # Customize if needed
+
+    return {
+        "primaryKey": primary_keys,
+        "fields": fields
+    }
 
 def write_csv(records: list[dict], output_path: str):
     """

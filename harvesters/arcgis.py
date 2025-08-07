@@ -23,7 +23,7 @@ class ArcGISHarvester(BaseHarvester):
             reader = csv.DictReader(f)
             for row in reader:
                 hub_id = row['ID']
-                url = row['Identifier']
+                url = row['Endpoint URL']
                 try:
                     resp = requests.get(url, timeout=30)
                     resp.raise_for_status()
@@ -118,6 +118,7 @@ class ArcGISHarvester(BaseHarvester):
                     'Code': rec.get('ID', ''),
                     'Member Of': rec.get('Member Of', ''),
                     'Publisher': rec.get('Publisher', ''),
+                    'Endpoint URL': rec.get('Endpoint URL', ''),
 
                     # Fields to harvest from DCAT API
                     'Alternative Title': title,
@@ -171,7 +172,10 @@ class ArcGISHarvester(BaseHarvester):
     
     def add_provenance(self, df):
         df = super().add_provenance(df)
-        df['Accrual Method'] = 'ArcGIS Hub'
+        df['Accrual Method'] = 'Scripted harvest'
+        df['Source Platform'] = 'ArcGIS Hub'
+        df['Supported Metadata Schema'] = 'DCAT 1.1'
+
         return df
 
     def clean(self, df):
