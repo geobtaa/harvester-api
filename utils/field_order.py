@@ -1,71 +1,42 @@
+import pandas as pd
 import yaml
 
 def load_field_order_from_schemas(
-    primary_schema_path="schemas/geobtaa_schema.yaml",
+    primary_schema_path="schemas/geobtaa_schema.csv",
     dist_schema_path="schemas/distribution_types.yaml",
 ) -> list:
     """
-    Loads canonical field order from both the main geobtaa_schema.yaml and distribution_types.yaml,
-    ensuring unique fields in their declared order.
-    Returns a combined FIELD_ORDER list.
+    Loads canonical field order from geobtaa_schema.csv and distribution_types.yaml.
     """
-    # Load primary schema
-    with open(primary_schema_path, "r", encoding="utf-8") as f:
-        primary_schema = yaml.safe_load(f)
+    df = pd.read_csv(primary_schema_path, dtype=str).fillna("")
+    df["order"] = df["order"].astype(int)
+    field_names = df.sort_values("order")["name"].tolist()
 
-    field_names = []
-    seen = set()
+    # Avoid duplicates and preserve order
+    seen = set(field_names)
+    combined_order = field_names.copy()
 
-    # Add primary keys first, avoiding duplicates
-    for pk in primary_schema.get("primaryKey", []):
-        if pk not in seen:
-            field_names.append(pk)
-            seen.add(pk)
-
-    # Add additional fields, skipping ones already included
-    for f in primary_schema.get("fields", []):
-        name = f.get("name")
-        if name and name not in seen:
-            field_names.append(name)
-            seen.add(name)
-
-    # Load distribution schema and add link variables, skipping duplicates
+    # Add distribution variables
     with open(dist_schema_path, "r", encoding="utf-8") as f:
         dist_schema = yaml.safe_load(f)
 
-    link_vars = []
     for dist in dist_schema.get("distribution_types", []):
         for var in dist.get("variables", []):
             if var not in seen:
-                link_vars.append(var)
+                combined_order.append(var)
                 seen.add(var)
 
-    return field_names + link_vars
+    return combined_order
 
 FIELD_ORDER = load_field_order_from_schemas()
 
-def load_primary_field_order(schema_path="schemas/geobtaa_schema.yaml") -> list:
+
+def load_primary_field_order(schema_path="schemas/geobtaa_schema.csv") -> list:
     """
-    Loads only the canonical primary metadata field order (excludes distribution fields).
+    Load only the ordered primary metadata field names (excludes distribution fields).
     """
-    with open(schema_path, "r", encoding="utf-8") as f:
-        schema = yaml.safe_load(f)
-
-    field_order = []
-    seen = set()
-
-    for pk in schema.get("primaryKey", []):
-        if pk not in seen:
-            field_order.append(pk)
-            seen.add(pk)
-
-    for field in schema.get("fields", []):
-        name = field.get("name")
-        if name and name not in seen:
-            field_order.append(name)
-            seen.add(name)
-
-    return field_order
-
+    df = pd.read_csv(schema_path, dtype=str).fillna("")
+    df["order"] = df["order"].astype(int)
+    return df.sort_values("order")["name"].tolist()
 
 PRIMARY_FIELD_ORDER = load_primary_field_order()
