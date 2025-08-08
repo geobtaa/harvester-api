@@ -253,11 +253,19 @@ class ArcGISHarvester(BaseHarvester):
     def arcgis_harvest_identifier_and_id(self, identifier: str) -> tuple:
         parsed = urlparse(identifier)
         qs = parse_qs(parsed.query)
+
         if 'id' in qs:
             ds_id = qs['id'][0]
+
+            # Append sublayer number if present
+            if 'sublayer' in qs:
+                ds_id = f"{ds_id}_{qs['sublayer'][0]}"
+
             cleaned = f"https://hub.arcgis.com/datasets/{ds_id}"
             return cleaned, ds_id
+
         return identifier, identifier
+
 
     def arcgis_parse_identifiers(self, df):
         ids = df['identifier_raw'].apply(self.arcgis_harvest_identifier_and_id)
