@@ -1,0 +1,1 @@
+The `scripts` folder contains standalone python scripts that are not integrated into the harvester modules.
