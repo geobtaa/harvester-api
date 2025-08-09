@@ -48,7 +48,7 @@
       };
 
       eventSource.onerror = function () {
-        output.textContent += "⚠️ Stream closed. If the harvester did not complete, please check logs.\n";
+        output.textContent += "Stream closed. The harvester did not complete, please check logs.\n";
         eventSource.close();
       };
     }
