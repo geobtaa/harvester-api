@@ -105,7 +105,8 @@ class ArcGISHarvester(BaseHarvester):
                     'Is Part Of': rec.get('ID', ''),
                     'Code': rec.get('ID', ''),
                     'Member Of': rec.get('Member Of', ''),
-                    'Publisher': rec.get('Publisher', ''),
+                    'titlePlace': rec.get('Publisher', ''),
+                    'Publisher': rec.get('Creator', ''),
                     'Endpoint URL': rec.get('Endpoint URL', ''),
 
                     # Fields to harvest from DCAT API
@@ -316,15 +317,15 @@ class ArcGISHarvester(BaseHarvester):
 
     def arcgis_reformat_titles(self, df):
         """
-        Updates the Title field by concatenating 'Alternative Title' and 'Publisher',
-        with the Publisher in square brackets. Handles missing values gracefully.
+        Updates the Title field by concatenating 'Alternative Title' and 'titlePlace',
+        with the titlePlace in square brackets. Handles missing values gracefully.
         Example: "IDOT Waterway Ferries [Illinois]"
         """
         df['Title'] = df.apply(
-            lambda row: f"{row['Alternative Title']} [{row['Publisher']}]"
-            if pd.notna(row['Alternative Title']) and pd.notna(row['Publisher'])
+            lambda row: f"{row['Alternative Title']} [{row['titlePlace']}]"
+            if pd.notna(row['Alternative Title']) and pd.notna(row['titlePlace'])
             else row['Alternative Title'] if pd.notna(row['Alternative Title'])
-            else f"[{row['Publisher']}]" if pd.notna(row['Publisher'])
+            else f"[{row['titlePlace']}]" if pd.notna(row['titlePlace'])
             else "",
             axis=1
         )
