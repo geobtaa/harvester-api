@@ -34,7 +34,7 @@ async def root():
 @app.post("/upload")
 async def upload_csv(file: UploadFile = File(...)):
     if file.filename.endswith(".csv"):
-        save_path = os.path.join("data", "arcHubs.csv")
+        save_path = os.path.join("inputs", "arcHubs.csv")
         with open(save_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         return RedirectResponse(url="/static/arcgis.html?upload=success", status_code=303)
@@ -99,7 +99,7 @@ async def run_arcgis_stream():
 
 
         # Proceed with the remaining steps
-        yield f"data: ✅ Finished fetching {len(fetched_records)} records. Now parsing...\n\n"
+        yield f"data: Finished fetching {len(fetched_records)} records. Now parsing...\n\n"
         parsed = harvester.parse(fetched_records)
         flat = harvester.flatten(parsed)
         df = harvester.build_dataframe(flat)
@@ -110,7 +110,7 @@ async def run_arcgis_stream():
         harvester.validate(df)
         harvester.write_outputs(df)
 
-        yield f"data: ✅ Harvester complete! Check the output folder.\n\n"
+        yield f"data: Harvester complete! Check the output folder.\n\n"
         yield "data: DONE\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -127,9 +127,9 @@ async def run_pasda_stream():
         harvester = PasdaHarvester(config)
         harvester.load_reference_data()
 
-        yield "data: ✅ Starting PASDA harvest...\n\n"
+        yield "data: Starting PASDA harvest...\n\n"
         raw_html = harvester.fetch()
-        yield "data: ✅ Fetched HTML, now parsing...\n\n"
+        yield "data: Fetched HTML, now parsing...\n\n"
 
         parsed = harvester.parse(raw_html)
         flat = harvester.flatten(parsed)
@@ -141,7 +141,7 @@ async def run_pasda_stream():
         harvester.validate(df)
         harvester.write_outputs(df)
 
-        yield "data: ✅ PASDA harvest complete. Check output folder.\n\n"
+        yield "data: PASDA harvest complete. Check output folder.\n\n"
         yield "data: DONE\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

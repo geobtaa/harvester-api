@@ -1,5 +1,6 @@
 import csv
 import time
+import math
 import os
 import re
 from urllib.parse import urlparse, parse_qs
@@ -32,11 +33,11 @@ class ArcGISHarvester(BaseHarvester):
                     resp.raise_for_status()
                     data = resp.json()
                 except Exception as e:
-                    yield f"[ArcGIS] ❌ Error fetching {hub_id}: {e}"
+                    yield f"[ArcGIS] Error fetching {hub_id}: {e}"
                     continue
 
                 row['raw_data'] = data
-                yield f"[ArcGIS] ✅ Fetched {hub_id} — {row.get('Title', 'No Title')}"
+                yield f"[ArcGIS] Fetched {hub_id} — {row.get('Title', 'No Title')}"
                 yield row
 
 
@@ -44,7 +45,6 @@ class ArcGISHarvester(BaseHarvester):
     #     not needed
 
     def flatten(self, parsed_data):
-
         rows = []
         for rec in parsed_data:
             hub_id = rec['ID']
@@ -58,7 +58,7 @@ class ArcGISHarvester(BaseHarvester):
                     continue
 
                 description = ds.get('description', '')
-                distributions = ds.get('distribution', [])
+                distributions = ds.get('distribution', []) or []
 
                 # Distribution filter: skip if no valid type
                 allowed_titles = {'Shapefile'}
@@ -66,64 +66,47 @@ class ArcGISHarvester(BaseHarvester):
 
                 has_valid_title = any(dist.get('title') in allowed_titles for dist in distributions)
                 has_valid_url = any(
-                    any(pattern in dist.get('accessURL', '') for pattern in allowed_access_patterns)
+                    any(pattern in (dist.get('accessURL') or '') for pattern in allowed_access_patterns)
                     for dist in distributions
                 )
-
                 if not (has_valid_title or has_valid_url):
                     continue
 
-                # Extract default from input CSV
-                default_bbox = rec.get('Bounding Box', '')
-
-                # Harvested value from metadata
-                harvested_spatial = ds.get('spatial', '')
-
-                # Fallback if spatial is blank, null, or contains invalid placeholders
-                if isinstance(harvested_spatial, str) and (
-                    not harvested_spatial.strip()
-                    or harvested_spatial.strip().startswith("{{")
-                ):
-                    final_bbox = default_bbox
-                else:
-                    final_bbox = harvested_spatial
-
                 # --- Flatten distribution fields ---
                 dist_fields = {
-                    'download': '',
                     'featureService': '',
                     'mapService': '',
                     'imageService': '',
                     'tileService': '',
                     'Format': '',
                 }
-
                 for dist in distributions:
                     dist_title = dist.get('title', '')
                     access_url = dist.get('accessURL', '')
-
-                    if dist_title == 'Shapefile':
-                        dist_fields['download'] = access_url
-                        dist_fields['Format'] = 'Shapefile'
-                    elif dist_title == 'ArcGIS GeoService' and access_url:
+                    if dist_title == 'ArcGIS GeoService' and access_url:
                         if 'FeatureServer' in access_url:
                             dist_fields['featureService'] = access_url
+                            dist_fields['Format'] = 'ArcGIS FeatureLayer'
                         elif 'MapServer' in access_url:
                             dist_fields['mapService'] = access_url
+                            dist_fields['Format'] = 'ArcGIS DynamicMapLayer'
                         elif 'ImageServer' in access_url:
                             dist_fields['imageService'] = access_url
-                            dist_fields['Format'] = 'Imagery'
+                            dist_fields['Format'] = 'ArcGIS ImageMapLayer'
                         elif 'TileServer' in access_url:
                             dist_fields['tileService'] = access_url
+                            dist_fields['Format'] = 'ArcGIS TiledMapLayer'
 
+                # --- Build row (no Bounding Box here) ---
                 row = {
                     # Fields from input CSV
-                    'Provider': rec.get('Title', ''),
+                    'Local Collection': rec.get('Title', ''),
                     'Spatial Coverage': rec.get('Spatial Coverage', ''),
                     'Is Part Of': rec.get('ID', ''),
                     'Code': rec.get('ID', ''),
                     'Member Of': rec.get('Member Of', ''),
-                    'Publisher': rec.get('Publisher', ''),
+                    'titlePlace': rec.get('Publisher', ''),
+                    'Publisher': rec.get('Creator', ''),
                     'Endpoint URL': rec.get('Endpoint URL', ''),
 
                     # Fields to harvest from DCAT API
@@ -131,20 +114,24 @@ class ArcGISHarvester(BaseHarvester):
                     'Description': description,
                     'Creator': next(iter(ds.get('publisher', {}).values()), ''),
                     'Keyword': '|'.join(ds.get('keyword', [])).replace(' ', ''),
-                    'Date Issued': ds.get('issued', '').split('T')[0],
-                    'Date Modified': ds.get('modified', '').split('T')[0],
+                    'Date Issued': (ds.get('issued', '') or '').split('T')[0],
+                    'Date Modified': (ds.get('modified', '') or '').split('T')[0],
                     'Rights': ds.get('license', ''),
                     'identifier_raw': ds.get('identifier', ''),
                     'information': ds.get('landingPage', ''),
-                    'spatial': ds.get('spatial', {}),
+
+                    # Keep raw spatial + hub default for later bbox step
+                    'spatial': ds.get('spatial', ''),
+                    'default_bbox': rec.get('Bounding Box', ''),
+
                     'distributions': distributions,
-                    'Bounding Box': final_bbox
                 }
 
                 row.update(dist_fields)
                 rows.append(row)
 
         return rows
+
 
 
     def build_dataframe(self, flat_data):
@@ -170,7 +157,7 @@ class ArcGISHarvester(BaseHarvester):
     def add_defaults(self, df):
         df = super().add_defaults(df)
 
-        df['Display Note'] = "This resource was automatically cataloged from the provider's ArcGIS Hub. In some cases, information shown here may be out-of-date. Click the 'Visit Source' button to search for items on the original provider's website."
+        df['Display Note'] = "Tip: Check “Visit Source” link for download options."
         df['Language'] = 'eng'
         df['Access Rights'] = 'Public'
         df['Resource Class'] = 'Web services'
@@ -190,8 +177,8 @@ class ArcGISHarvester(BaseHarvester):
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
             lambda row: (
-                f"The metadata for this resource was harvested from "
-                f"{row.get('Provider', 'an ArcGIS Hub')} on {today}."
+                f"The metadata for this resource was last retrieved from "
+                f"{row.get('Local Collection', ' ArcGIS Hub')} on {today}."
             ),
             axis=1,
         )
@@ -219,10 +206,10 @@ class ArcGISHarvester(BaseHarvester):
             # ---------- merge ----------
             df = pd.concat([df, hub_df], ignore_index=True)
 
-            print(f"[ArcGIS] ✅ Updated Status for {len(hub_df)} hub records and "
-                f"appended them to the metadata dataframe.")
+            print(f"[ArcGIS] Updated Status for {len(hub_df)} hub records and "
+                f"appended them to the harvested metadata dataframe.")
         else:
-            print("[ArcGIS] ⚠️ hub_list_csv not found or unspecified.")
+            print("[ArcGIS] hub_list_csv not found or unspecified.")
 
         return df
 
@@ -241,6 +228,47 @@ class ArcGISHarvester(BaseHarvester):
         return super().write_outputs(primary_df, distributions_df)
 
 # --- ArcGIS-Specific Field Derive Functions --- #
+
+    def arcgis_compute_bbox_column(self, df):
+        """
+        Populate 'Bounding Box' using 'spatial' if it has 4 comma-separated numbers
+        and forms a non-degenerate box (xmin != xmax and ymin != ymax).
+        Otherwise, use 'default_bbox'.
+        """
+        def _bbox(r):
+            sp = r.get('spatial', None)
+            fallback = r.get('default_bbox', '')
+
+            def use_fallback():
+                fb = '' if pd.isna(fallback) else str(fallback).strip()
+                return fb
+
+            if isinstance(sp, str):
+                parts = [p.strip() for p in sp.split(',')]
+                if len(parts) == 4:
+                    try:
+                        xmin, ymin, xmax, ymax = [float(p) for p in parts]
+
+                        # Normalize if reversed
+                        if xmin > xmax: xmin, xmax = xmax, xmin
+                        if ymin > ymax: ymin, ymax = ymax, ymin
+
+                        # Degenerate → line/point → use fallback
+                        if xmin == xmax or ymin == ymax:
+                            return use_fallback()
+
+                        # Valid polygon bbox
+                        return f"{xmin},{ymin},{xmax},{ymax}"
+                    except ValueError:
+                        pass
+
+            # Not a valid 4-number bbox → use fallback
+            return use_fallback()
+
+        df['Bounding Box'] = df.apply(_bbox, axis=1)
+        return df
+
+
 
     def arcgis_harvest_identifier_and_id(self, identifier: str) -> tuple:
         parsed = urlparse(identifier)
@@ -301,10 +329,19 @@ class ArcGISHarvester(BaseHarvester):
 
     def arcgis_reformat_titles(self, df):
         """
-        Updates the Title field using a formatting pipeline.
+        Updates the Title field by concatenating 'Alternative Title' and 'titlePlace',
+        with the titlePlace in square brackets. Handles missing values gracefully.
+        Example: "IDOT Waterway Ferries [Illinois]"
         """
-        return title_wizard(df)
-
+        df['Title'] = df.apply(
+            lambda row: f"{row['Alternative Title']} [{row['titlePlace']}]"
+            if pd.notna(row['Alternative Title']) and pd.notna(row['titlePlace'])
+            else row['Alternative Title'] if pd.notna(row['Alternative Title'])
+            else f"[{row['titlePlace']}]" if pd.notna(row['titlePlace'])
+            else "",
+            axis=1
+        )
+        return df
 
     def arcgis_clean_creator_values(self, df):
         def _clean(value):
@@ -341,20 +378,8 @@ class ArcGISHarvester(BaseHarvester):
         df['Resource Type'] = df.apply(match_keywords, axis=1)
         return df
 
-    def arcgis_compute_bbox_column(self, df):
-        def _bbox(r):
-            sp = r.get('spatial', None)          # this is the raw 'spatial' field from ArcGIS dataset JSON
-            fallback = r.get('bbox_fallback', '')  # default bbox from your input CSV
 
-            # Case 1: if sp is a valid bbox string, return it directly
-            if isinstance(sp, str) and sp.count(',') == 3:
-                return sp
 
-            # Case 2: fallback to spreadsheet value if nothing else worked
-            return fallback if pd.notnull(fallback) else ''
-
-        df['Bounding Box'] = df.apply(_bbox, axis=1)
-        return df
 
 
 

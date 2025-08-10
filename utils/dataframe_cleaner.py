@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import re
 from bs4 import BeautifulSoup
 
 from utils.field_order import FIELD_ORDER
@@ -39,14 +40,18 @@ def reorder_columns(df: pd.DataFrame, field_order: list = FIELD_ORDER) -> pd.Dat
 def strip_text_fields(df: pd.DataFrame) -> pd.DataFrame:
     """
     Strip HTML and unwanted characters from all string fields in the DataFrame.
-    Applies BeautifulSoup cleanup and trims '|', '-', and whitespace.
+    Preserves readable spacing between block/inline elements.
     """
     def clean_cell(cell):
         if isinstance(cell, str):
-            # Remove HTML tags
-            text = BeautifulSoup(cell, "html.parser").get_text()
-            # Strip unwanted characters
-            return text.strip().strip('|')
+            soup = BeautifulSoup(cell, "html.parser")
+            # Insert a space between text chunks extracted from tags
+            text = soup.get_text(separator="; ", strip=True)
+            # Collapse runs of whitespace to single spaces
+            text = re.sub(r"\s+", " ", text)
+            # Trim leading/trailing pipes if they sneak in
+            text = text.strip().strip("|")
+            return text
         return cell
 
     for col in df.select_dtypes(include=["object", "string"]).columns:

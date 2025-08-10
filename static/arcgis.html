@@ -56,7 +56,7 @@
     // Show success message if redirected with ?upload=success
     const params = new URLSearchParams(window.location.search);
     if (params.get("upload") === "success") {
-        document.getElementById("upload-message").textContent = "✅ Upload successful! File saved as arcHubs.csv in the data folder.";
+        document.getElementById("upload-message").textContent = "Upload successful! File saved as arcHubs.csv in the data folder.";
     }
 
     // Streaming harvester output
@@ -67,7 +67,7 @@
 
     eventSource.onmessage = function (event) {
         if (event.data === "DONE") {
-        // output.textContent += "✅ Harvester completed successfully.\n";
+        // output.textContent += "Harvester completed successfully.\n";
         eventSource.close();
         } else {
         output.textContent += event.data + "\n";
@@ -76,7 +76,7 @@
     };
 
     eventSource.onerror = function () {
-        output.textContent += "⚠️ Stream closed. If the harvester did not complete, please check logs.\n";
+        output.textContent += "Stream closed. If the harvester did not complete, please check logs.\n";
         eventSource.close();
     };
     }

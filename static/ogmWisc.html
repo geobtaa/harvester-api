@@ -56,13 +56,13 @@
 
             if (response.ok) {
                 const result = await response.json();
-                statusDiv.textContent = "✅ Harvest complete!";
+                statusDiv.textContent = "Harvest complete!";
                 console.log(result);
             } else {
-                statusDiv.textContent = "❌ Harvest failed.";
+                statusDiv.textContent = "Harvest failed.";
             }
         } catch (err) {
-            statusDiv.textContent = "⚠️ Error connecting to the directory.";
+            statusDiv.textContent = "Error connecting to the directory.";
             console.error(err);
         }
     }
