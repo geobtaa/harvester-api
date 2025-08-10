@@ -157,7 +157,7 @@ class ArcGISHarvester(BaseHarvester):
     def add_defaults(self, df):
         df = super().add_defaults(df)
 
-        df['Display Note'] = "This resource was automatically cataloged from ArcGIS Hub. In some cases, information shown here may be out-of-date. Check the 'Visit Source' link for additional information including download options."
+        df['Display Note'] = "Tip: Check “Visit Source” link for download options."
         df['Language'] = 'eng'
         df['Access Rights'] = 'Public'
         df['Resource Class'] = 'Web services'
@@ -177,7 +177,7 @@ class ArcGISHarvester(BaseHarvester):
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
             lambda row: (
-                f"The metadata for this resource was harvested from "
+                f"The metadata for this resource was last retrieved from "
                 f"{row.get('Local Collection', ' ArcGIS Hub')} on {today}."
             ),
             axis=1,
@@ -231,31 +231,43 @@ class ArcGISHarvester(BaseHarvester):
 
     def arcgis_compute_bbox_column(self, df):
         """
-        Populate 'Bounding Box' using 'spatial' if it contains
-        4 comma-separated numeric values; otherwise use 'default_bbox'.
+        Populate 'Bounding Box' using 'spatial' if it has 4 comma-separated numbers
+        and forms a non-degenerate box (xmin != xmax and ymin != ymax).
+        Otherwise, use 'default_bbox'.
         """
         def _bbox(r):
             sp = r.get('spatial', None)
             fallback = r.get('default_bbox', '')
 
-            # Use harvested value if valid
+            def use_fallback():
+                fb = '' if pd.isna(fallback) else str(fallback).strip()
+                return fb
+
             if isinstance(sp, str):
                 parts = [p.strip() for p in sp.split(',')]
                 if len(parts) == 4:
                     try:
-                        [float(p) for p in parts]
-                        return sp
+                        xmin, ymin, xmax, ymax = [float(p) for p in parts]
+
+                        # Normalize if reversed
+                        if xmin > xmax: xmin, xmax = xmax, xmin
+                        if ymin > ymax: ymin, ymax = ymax, ymin
+
+                        # Degenerate → line/point → use fallback
+                        if xmin == xmax or ymin == ymax:
+                            return use_fallback()
+
+                        # Valid polygon bbox
+                        return f"{xmin},{ymin},{xmax},{ymax}"
                     except ValueError:
                         pass
 
-            # Else use fallback if available
-            if pd.notnull(fallback) and str(fallback).strip():
-                return str(fallback).strip()
-
-            return ''
+            # Not a valid 4-number bbox → use fallback
+            return use_fallback()
 
         df['Bounding Box'] = df.apply(_bbox, axis=1)
         return df
+
 
 
     def arcgis_harvest_identifier_and_id(self, identifier: str) -> tuple:
