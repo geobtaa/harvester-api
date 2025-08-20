@@ -88,19 +88,19 @@ def create_date_ranges(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def dataframe_cleaning(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Run core cleaning steps on the DataFrame:
-    - Remove duplicate rows and columns
-    - Strip HTML and unwanted characters from all text fields
-    - Create standardized date ranges
-    - Reorder columns based on FIELD_ORDER
-    """
-    df = (
-        df.pipe(deduplicate_rows_and_columns)
-          .pipe(strip_text_fields)
-          .pipe(create_date_ranges)
-          .pipe(reorder_columns)
-    )
-    print(f"[CLEAN] Dataframe cleaning complete: {len(df)} rows, {len(df.columns)} columns.")
+    if df is None:
+        raise ValueError("dataframe_cleaning() received None. A prior stage returned None.")
+    if not isinstance(df, pd.DataFrame):
+        raise TypeError(f"dataframe_cleaning() expected DataFrame, got {type(df)}")
+
+    before_cols = set(df.columns)
+    df = (df.pipe(deduplicate_rows_and_columns)
+            .pipe(strip_text_fields)
+            .pipe(create_date_ranges)
+            .pipe(reorder_columns))
+    after_cols = list(df.columns)
+    dropped = before_cols - set(after_cols)
+    print(f"[CLEAN] Dataframe cleaning complete: {len(df)} rows, {len(after_cols)} cols. "
+          f"Dropped-by-order: {len(dropped)} ({', '.join(sorted(dropped))[:200]}...)")
     return df
 
