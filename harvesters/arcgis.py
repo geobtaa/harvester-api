@@ -197,7 +197,7 @@ class ArcGISHarvester(BaseHarvester):
             indexed_ids = set(df["Is Part Of"].astype(str))
 
             hub_df["Status"] = hub_df["ID"].apply(
-                lambda hub_id: "Indexed" if str(hub_id) in indexed_ids else "Not Indexed"
+                lambda hub_id: "Indexed" if str(hub_id) in indexed_ids else "Not indexed"
             )
 
             hub_df["Date Accessioned"] = today
