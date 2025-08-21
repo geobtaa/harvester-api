@@ -117,6 +117,7 @@ class PasdaHarvester(BaseHarvester):
         return (
             df.pipe(self.pasda_drop_incomplete)
             .pipe(self.pasda_drop_federal)
+            .pipe(self.pasda_philadelphia_spatial)
             .pipe(self.pasda_spatial_coverage)
             .pipe(self.pasda_temporal_coverage)
             .pipe(self.pasda_format_date_ranges)
@@ -261,7 +262,34 @@ class PasdaHarvester(BaseHarvester):
         Updates the Title field using a formatting pipeline.
         """
         return title_wizard(df)
-        
+       
+    def pasda_philadelphia_spatial(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        If a row refers to 'Pennsylvania--Philadelphia', set a precise city bbox.
+        Triggers when either:
+        - Creator == 'Pennsylvania--Philadelphia', or
+        - 'Spatial Coverage' contains 'Pennsylvania--Philadelphia'
+        """
+        if df.empty:
+            return df
+
+        target = "Pennsylvania--Philadelphia"
+        philly_bbox = "-75.280298,39.867005,-74.955832,40.13796"
+
+        # Build a boolean mask from Creator and/or Spatial Coverage
+        mask = pd.Series(False, index=df.index)
+        if "Creator" in df.columns:
+            mask = mask | (df["Creator"] == target)
+        if "Spatial Coverage" in df.columns:
+            mask = mask | df["Spatial Coverage"].astype(str).str.contains(target, na=False)
+
+        # Apply the bbox where the mask is true
+        if "Bounding Box" not in df.columns:
+            df["Bounding Box"] = ""  # ensure column exists
+
+        df.loc[mask, "Bounding Box"] = philly_bbox
+        return df
+
 
 
 
