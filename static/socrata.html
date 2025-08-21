@@ -51,6 +51,10 @@
   <button onclick="runHarvester()">Run Harvester</button>
   <pre id="stream-output" style="border:1px solid #ccc; padding:1em; margin-top:1em; height:300px; overflow:auto;"></pre>
 
+  <h3>Step 3: Run Geojson Updater</h3>
+  <p>Run the python script in scripts/check_geojsons.py. This will remove nonfunctioning geojson links. Upload the output file called {data}_socrata_distributions_cleaned.csv to GBL Admin.</p>
+
+
   <script>
     // Show success message if redirected with ?upload=success
     const params = new URLSearchParams(window.location.search);

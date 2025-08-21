@@ -301,7 +301,6 @@ class SocrataHarvester(BaseHarvester):
                 return f"{base}/resource/{row['ID']}.geojson"
             return ''
 
-        df['geojson'] = df.apply(build_geojson, axis=1)
+        df['geo_json'] = df.apply(build_geojson, axis=1)
         return df
-
 
