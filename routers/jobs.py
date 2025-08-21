@@ -3,12 +3,15 @@ import os
 import yaml
 
 from utils.file_io import load_local_schema
-from harvesters.pasda import PasdaHarvester
+
 from harvesters.arcgis import ArcGISHarvester
+from harvesters.socrata import SocrataHarvester
+from harvesters.pasda import PasdaHarvester
 from harvesters.ogmWisc import OgmWiscHarvester
 
 HARVESTER_REGISTRY = {
     "arcgis": ArcGISHarvester,
+    "socrata": SocrataHarvester,
     "pasda": PasdaHarvester,
     "ogmWisc": OgmWiscHarvester,
 }

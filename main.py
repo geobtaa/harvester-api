@@ -113,6 +113,47 @@ async def run_arcgis_stream():
         yield f"data: Harvester complete! Check the output folder.\n\n"
         yield "data: DONE\n\n"
 
+    return StreamingResponse(event_stream(), media_type="text/event-stream")\
+    
+@app.get("/run-socrata-stream")
+async def run_socrata_stream():
+    from harvesters.socrata import SocrataHarvester
+    import yaml
+
+    async def event_stream():
+        config_path = "config/socrata.yaml"
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        harvester = SocrataHarvester(config)
+        harvester.load_reference_data()
+
+        fetched_records = []
+        for item in harvester.fetch():
+            if isinstance(item, str):
+                # Just yield the message — it was already formatted in arcgis.py
+                yield f"data: {item}\n\n"
+            else:
+                fetched_records.append(item)
+
+            await asyncio.sleep(0.1)  # <— allow the event loop to yield control
+
+
+        # Proceed with the remaining steps
+        yield f"data: Finished fetching {len(fetched_records)} records. Now parsing...\n\n"
+        parsed = harvester.parse(fetched_records)
+        flat = harvester.flatten(parsed)
+        df = harvester.build_dataframe(flat)
+        df = harvester.derive_fields(df)
+        df = harvester.add_defaults(df)
+        df = harvester.add_provenance(df)
+        df = harvester.clean(df)
+        harvester.validate(df)
+        harvester.write_outputs(df)
+
+        yield f"data: Harvester complete! Check the output folder.\n\n"
+        yield "data: DONE\n\n"
+
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 @app.get("/run-pasda-stream")
@@ -145,3 +186,4 @@ async def run_pasda_stream():
         yield "data: DONE\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
