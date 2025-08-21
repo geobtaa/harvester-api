@@ -117,8 +117,8 @@ class PasdaHarvester(BaseHarvester):
         return (
             df.pipe(self.pasda_drop_incomplete)
             .pipe(self.pasda_drop_federal)
-            .pipe(self.pasda_philadelphia_spatial)
             .pipe(self.pasda_spatial_coverage)
+            .pipe(self.pasda_philadelphia_spatial)
             .pipe(self.pasda_temporal_coverage)
             .pipe(self.pasda_format_date_ranges)
             .pipe(self.pasda_reformat_titles)
@@ -265,30 +265,27 @@ class PasdaHarvester(BaseHarvester):
        
     def pasda_philadelphia_spatial(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        If a row refers to 'Pennsylvania--Philadelphia', set a precise city bbox.
-        Triggers when either:
-        - Creator == 'Pennsylvania--Philadelphia', or
-        - 'Spatial Coverage' contains 'Pennsylvania--Philadelphia'
+        For rows with Creator == 'Pennsylvania--Philadelphia':
+        - set a precise Philadelphia Bounding Box
+        - clear Geometry and GeoNames (leave blank)
         """
-        if df.empty:
+        if df.empty or "Creator" not in df.columns:
             return df
 
-        target = "Pennsylvania--Philadelphia"
-        philly_bbox = "-75.280298,39.867005,-74.955832,40.13796"
+        philly_mask = df["Creator"] == "Pennsylvania--Philadelphia"
+        if not philly_mask.any():
+            return df
 
-        # Build a boolean mask from Creator and/or Spatial Coverage
-        mask = pd.Series(False, index=df.index)
-        if "Creator" in df.columns:
-            mask = mask | (df["Creator"] == target)
-        if "Spatial Coverage" in df.columns:
-            mask = mask | df["Spatial Coverage"].astype(str).str.contains(target, na=False)
+        # Ensure columns exist
+        for col in ["Bounding Box", "Geometry", "GeoNames"]:
+            if col not in df.columns:
+                df[col] = ""
 
-        # Apply the bbox where the mask is true
-        if "Bounding Box" not in df.columns:
-            df["Bounding Box"] = ""  # ensure column exists
-
-        df.loc[mask, "Bounding Box"] = philly_bbox
+        df.loc[philly_mask, "Bounding Box"] = "-75.280298,39.867005,-74.955832,40.13796"
+        df.loc[philly_mask, ["Geometry", "GeoNames"]] = ""  # clear statewide defaults
         return df
+
+
 
 
 
