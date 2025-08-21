@@ -39,7 +39,7 @@ distribution_types:
     name: Download file
     reference_uri: http://schema.org/downloadUrl
 
-  - key: geo_json
+  - key: geojson
     variables: [geojson]
     name: GeoJSON
     reference_uri: http://geojson.org/geojson-spec.html
