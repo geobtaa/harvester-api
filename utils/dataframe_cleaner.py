@@ -46,7 +46,7 @@ def strip_text_fields(df: pd.DataFrame) -> pd.DataFrame:
         if isinstance(cell, str):
             soup = BeautifulSoup(cell, "html.parser")
             # Insert a space between text chunks extracted from tags
-            text = soup.get_text(separator="; ", strip=True)
+            text = soup.get_text(separator=" ", strip=True)
             # Collapse runs of whitespace to single spaces
             text = re.sub(r"\s+", " ", text)
             # Trim leading/trailing pipes if they sneak in
@@ -59,8 +59,36 @@ def strip_text_fields(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+def clean_descriptions(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Clean the 'Description' field: remove templated placeholders, normalize whitespace,
+    and replace some special characters. No-ops if column absent.
+    """
+    if 'Description' not in df.columns:
+        return df
 
-def create_date_ranges(df: pd.DataFrame) -> pd.DataFrame:
+    def _clean(text: str) -> str:
+        if not isinstance(text, str):
+            return ""
+        text = text.replace("{{default.description}}", "").replace("{{description}}", "")
+        text = re.sub(r'[\n\r]+', ' ', text)
+        text = re.sub(r'\s{2,}', ' ', text)
+        return text.translate({
+            8217: "'",  # RIGHT SINGLE QUOTATION MARK → '
+            8220: '"',  # LEFT DOUBLE QUOTATION MARK → "
+            8221: '"',  # RIGHT DOUBLE QUOTATION MARK → "
+            160:  " ",  # NBSP → space (use space instead of removing to avoid word-joins)
+            183:  " ",  # MIDDLE DOT → space
+            8226: " ",  # BULLET → space
+            8211: "-",  # EN DASH → hyphen
+            8203: ""    # ZERO WIDTH SPACE → removed
+        }).strip()
+
+    df['Description'] = df['Description'].apply(_clean)
+    return df
+
+
+def clean_date_ranges(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cleans the 'Date Range' field:
     - Fixes reversed ranges (e.g., 2024-2020 → 2020-2024)
@@ -96,7 +124,8 @@ def dataframe_cleaning(df: pd.DataFrame) -> pd.DataFrame:
     before_cols = set(df.columns)
     df = (df.pipe(deduplicate_rows_and_columns)
             .pipe(strip_text_fields)
-            .pipe(create_date_ranges)
+            .pipe(clean_descriptions)
+            .pipe(clean_date_ranges)
             .pipe(reorder_columns))
     after_cols = list(df.columns)
     dropped = before_cols - set(after_cols)

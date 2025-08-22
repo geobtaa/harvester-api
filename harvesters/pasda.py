@@ -99,11 +99,11 @@ class PasdaHarvester(BaseHarvester):
 
 
 
-    def flatten(self, parsed_data):
+    def flatten(self, harvested_data):
         """
-        Flattening not needed; returns parsed_data unchanged.
+        Flattening not needed; returns harvested_data unchanged.
         """
-        return parsed_data
+        return harvested_data
 
     def build_dataframe(self, parsed_or_flattened_data):
         return pd.DataFrame(parsed_or_flattened_data)
@@ -134,7 +134,6 @@ class PasdaHarvester(BaseHarvester):
         df['Member Of'] = 'ba5cc745-21c5-4ae9-954b-72dd8db6815a'
         df['Format'] = 'File'
         df['Resource Class'] = 'Datasets'
-        df['Access Rights'] = 'Public'
 
         return df
     
