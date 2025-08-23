@@ -14,7 +14,7 @@ class BaseHarvester:
         Initialize harvester with a config dictionary. Should include paths to input files and output locations.
         """
         self.config = config
-        self.distribution_types = None  # Shared resource
+        self.distribution_types = None
 
     def load_reference_data(self):
         """
@@ -36,11 +36,11 @@ class BaseHarvester:
         """
         return raw_data
 
-    def flatten(self, parsed_data):
+    def flatten(self, harvested_metadata):
         """
         Default passthrough. Use if records are nested and need flattening to 1 row per record.
         """
-        return parsed_data
+        return harvested_metadata
 
     def build_dataframe(self, parsed_or_flattened_data):
         """
@@ -61,6 +61,7 @@ class BaseHarvester:
         Override in subclasses if needed
         """
         df['Publication State'] = 'published'
+        df['Access Rights'] = 'Public'
         return df
     
     def add_provenance(self, df):

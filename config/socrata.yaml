@@ -1,5 +1,5 @@
 name: Socrata Harvest
 type: socrata
-hub_list_csv: inputs/socrataPortals.csv
+input_csv: inputs/socrataPortals.csv
 output_primary_csv: outputs/socrata_primary.csv
 output_distributions_csv: outputs/socrata_distributions.csv

@@ -48,7 +48,7 @@ class OgmWiscHarvester(BaseHarvester):
                         logging.warning(f"[OGMWisc] Failed to parse JSON at {file_path}: {e}")
         return dataset
 
-    def flatten(self, parsed_data):
+    def flatten(self, harvested_metadata):
         """
         Expands each record by parsing dct_references_s and adding one column per 'variable'
         defined in distribution_types.yaml. Columns are named according to those variables.
@@ -63,7 +63,7 @@ class OgmWiscHarvester(BaseHarvester):
             if uri:
                 uri_to_vars[uri] = variables
 
-        for rec in parsed_data:
+        for rec in harvested_metadata:
             new_record = rec.copy()
 
             raw_refs = rec.get("dct_references_s")

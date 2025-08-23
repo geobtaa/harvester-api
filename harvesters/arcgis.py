@@ -1,6 +1,5 @@
 import csv
 import time
-import math
 import os
 import re
 from urllib.parse import urlparse, parse_qs
@@ -11,8 +10,6 @@ import pandas as pd
 from harvesters.base import BaseHarvester
 from utils.distribution_writer import generate_secondary_table
 from utils.temporal_fields import infer_temporal_coverage_from_title, create_date_range
-from utils.title_formatter import title_wizard
-
 
 class ArcGISHarvester(BaseHarvester):
     def __init__(self, config):
@@ -22,125 +19,61 @@ class ArcGISHarvester(BaseHarvester):
         super().load_reference_data()
 
     def fetch(self):
-        hub_file = self.config.get("hub_list_csv")
-        with open(hub_file, newline='', encoding='utf-8') as f:
+        website_list = self.config.get("input_csv")
+        with open(website_list, newline='', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                hub_id = row['ID']
-                url = row['Endpoint URL']
+                website_id = row['ID']
+                endpoint_url = row['Endpoint URL']
                 try:
-                    resp = requests.get(url, timeout=30)
+                    resp = requests.get(endpoint_url, timeout=30)
                     resp.raise_for_status()
-                    data = resp.json()
+                    json_api = resp.json()
                 except Exception as e:
-                    yield f"[ArcGIS] Error fetching {hub_id}: {e}"
+                    yield f"[ArcGIS] Error fetching {website_id}: {e}"
                     continue
 
-                row['raw_data'] = data
-                yield f"[ArcGIS] Fetched {hub_id} — {row.get('Title', 'No Title')}"
+                row['fetched_catalog'] = json_api
+                yield f"[ArcGIS] Fetched {website_id} — {row.get('Title', 'No Title')}"
                 yield row
 
+    
+    def flatten(self, harvested_records):
 
-    # def parse(self, fetched_records):
-    #     not needed
+        flattened_list = []
 
-    def flatten(self, parsed_data):
-        rows = []
-        for rec in parsed_data:
-            hub_id = rec['ID']
-            for ds in rec.get('raw_data', {}).get('dataset', []):
-                # --- safe title handling -----------------------------------------
-                raw_title = ds.get('title')
-                title = str(raw_title).strip() if raw_title not in (None, "") else "Untitled"
+        for website_record in harvested_records:
+            if not isinstance(website_record, dict):
+                continue
 
-                # Skip empty titles or template placeholders like "{{name}}"
-                if not title or title.startswith("{{"):
-                    continue
+            # Extract the list of datasets from within the fetched catalog
+            resources = website_record.get("fetched_catalog", {}).get("dataset", [])
+            
 
-                description = ds.get('description', '')
-                distributions = ds.get('distribution', []) or []
+            # Creates a new, combined record for each individual dataset
+            for resource in resources:
+                flattened_list.append({
+                    "website": website_record,  # The complete record for the parent hub
+                    "resource": resource      # The record for each dataset
+                })
 
-                # Distribution filter: skip if no valid type
-                allowed_titles = {'Shapefile'}
-                allowed_access_patterns = ['ImageServer']
+        return flattened_list
+    
+    def build_dataframe(self, flattened_items):
 
-                has_valid_title = any(dist.get('title') in allowed_titles for dist in distributions)
-                has_valid_url = any(
-                    any(pattern in (dist.get('accessURL') or '') for pattern in allowed_access_patterns)
-                    for dist in distributions
-                )
-                if not (has_valid_title or has_valid_url):
-                    continue
+        df = pd.DataFrame(flattened_items)
 
-                # --- Flatten distribution fields ---
-                dist_fields = {
-                    'featureService': '',
-                    'mapService': '',
-                    'imageService': '',
-                    'tileService': '',
-                    'Format': '',
-                }
-                for dist in distributions:
-                    dist_title = dist.get('title', '')
-                    access_url = dist.get('accessURL', '')
-                    if dist_title == 'ArcGIS GeoService' and access_url:
-                        if 'FeatureServer' in access_url:
-                            dist_fields['featureService'] = access_url
-                            dist_fields['Format'] = 'ArcGIS FeatureLayer'
-                        elif 'MapServer' in access_url:
-                            dist_fields['mapService'] = access_url
-                            dist_fields['Format'] = 'ArcGIS DynamicMapLayer'
-                        elif 'ImageServer' in access_url:
-                            dist_fields['imageService'] = access_url
-                            dist_fields['Format'] = 'ArcGIS ImageMapLayer'
-                        elif 'TileServer' in access_url:
-                            dist_fields['tileService'] = access_url
-                            dist_fields['Format'] = 'ArcGIS TiledMapLayer'
+        df = (
+            df.pipe(self.arcgis_filter_rows)
+            .pipe(self.arcgis_map_to_schema)
+            .pipe(self.arcgis_extract_distributions) 
+        )
 
-                # --- Build row (no Bounding Box here) ---
-                row = {
-                    # Fields from input CSV
-                    'Local Collection': rec.get('Title', ''),
-                    'Spatial Coverage': rec.get('Spatial Coverage', ''),
-                    'Is Part Of': rec.get('ID', ''),
-                    'Code': rec.get('ID', ''),
-                    'Member Of': rec.get('Member Of', ''),
-                    'titlePlace': rec.get('Publisher', ''),
-                    'Publisher': rec.get('Creator', ''),
-                    'Endpoint URL': rec.get('Endpoint URL', ''),
-
-                    # Fields to harvest from DCAT API
-                    'Alternative Title': title,
-                    'Description': description,
-                    'Creator': next(iter(ds.get('publisher', {}).values()), ''),
-                    'Keyword': '|'.join(ds.get('keyword', [])).replace(' ', ''),
-                    'Date Issued': (ds.get('issued', '') or '').split('T')[0],
-                    'Date Modified': (ds.get('modified', '') or '').split('T')[0],
-                    'Rights': ds.get('license', ''),
-                    'identifier_raw': ds.get('identifier', ''),
-                    'information': ds.get('landingPage', ''),
-
-                    # Keep raw spatial + hub default for later bbox step
-                    'spatial': ds.get('spatial', ''),
-                    'default_bbox': rec.get('Bounding Box', ''),
-
-                    'distributions': distributions,
-                }
-
-                row.update(dist_fields)
-                rows.append(row)
-
-        return rows
-
-
-
-    def build_dataframe(self, flat_data):
-        return pd.DataFrame(flat_data)
+        return df
 
     def derive_fields(self, df):
         df = (
             df.pipe(self.arcgis_parse_identifiers)
-            .pipe(self.arcgis_clean_descriptions)
             .pipe(self.arcgis_temporal_coverage)
             .pipe(self.arcgis_format_date_ranges)
             .pipe(self.arcgis_compute_bbox_column)
@@ -150,16 +83,14 @@ class ArcGISHarvester(BaseHarvester):
         )
 
         # Drop any remaining dict-based fields before deduplication/cleaning
-        df = df.drop(columns=['keywords_list', 'spatial', 'distributions'], errors='ignore')
+        # df = df.drop(columns=['keywords_list', 'spatial', 'distributions'], errors='ignore')
         return df
-
 
     def add_defaults(self, df):
         df = super().add_defaults(df)
 
         df['Display Note'] = "Tip: Check “Visit Source” link for download options."
         df['Language'] = 'eng'
-        df['Access Rights'] = 'Public'
         df['Resource Class'] = 'Web services'
         return df
     
@@ -172,7 +103,7 @@ class ArcGISHarvester(BaseHarvester):
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "ArcGIS Hub"
         df["Accrual Method"] = "Scripted harvest"
-        df["Was Generated By"] = "R01_arcgis"
+        df["Harvest Workflow"] = "R01_arcgis"
         df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
@@ -229,6 +160,110 @@ class ArcGISHarvester(BaseHarvester):
 
 # --- ArcGIS-Specific Field Derive Functions --- #
 
+    def arcgis_filter_rows(self, df):
+        # ... (This method remains unchanged)
+        ALLOWED_TITLES = {'Shapefile'}
+        ACCESS_PATTERNS = ['ImageServer']  # extend if needed, e.g., 'FeatureServer', 'MapServer'
+
+        def is_valid(row):
+            resource = row['resource']
+            title = (resource.get('title') or '').strip()
+            if not title or title.startswith('{{'):
+                return False
+
+            dists = resource.get('distribution', []) or []
+            if not isinstance(dists, list):
+                return False
+
+            has_valid_title = any((dist.get('title') in ALLOWED_TITLES) for dist in dists)
+            has_valid_url = any(
+                any(pat in (dist.get('accessURL') or '') for pat in ACCESS_PATTERNS)
+                for dist in dists
+            )
+            return has_valid_title or has_valid_url
+
+        return df[df.apply(is_valid, axis=1)].reset_index(drop=True)
+
+    def arcgis_map_to_schema(self, df: pd.DataFrame) -> pd.DataFrame:
+
+        def get_creator(resource):
+            pub = resource.get('publisher')
+            if isinstance(pub, dict):
+                return pub.get('name') or next(iter(pub.values()), '')
+            return pub or ''
+
+        output_data = {
+            # --- Map Hub fields directly to Final Schema ---
+            'Is Part Of':       df['website'].apply(lambda h: h.get('ID', '')),
+            'Code':             df['website'].apply(lambda h: h.get('ID', '')),
+            'Local Collection': df['website'].apply(lambda h: h.get('Title', '')),
+            'Publisher':        df['website'].apply(lambda h: h.get('Creator', '')),
+            'Endpoint URL':     df['website'].apply(lambda h: h.get('Endpoint URL', '')),
+            'Spatial Coverage': df['website'].apply(lambda h: h.get('Spatial Coverage', '')),
+            'Bounding Box':     df['website'].apply(lambda h: h.get('Bounding Box', '')),
+            'Member Of':        df['website'].apply(lambda h: h.get('Member Of', '')),
+            'titlePlace':       df['website'].apply(lambda h: h.get('Publisher', '')),
+
+            # --- Map Dataset fields directly to Final Schema ---
+            'Alternative Title': df['resource'].apply(lambda d: (d.get('title') or '').strip()),
+            'Description':       df['resource'].apply(lambda d: d.get('description', '')),
+            'Creator':           df['resource'].apply(get_creator),
+            'Keyword':           df['resource'].apply(lambda d: '|'.join(k.strip() for k in d.get('keyword', []) if isinstance(k, str)).replace(' ', '')),
+            'Date Issued':       df['resource'].apply(lambda d: (d.get('issued', '') or '').split('T')[0]),
+            'Date Modified':     df['resource'].apply(lambda d: (d.get('modified', '') or '').split('T')[0]),
+            'Rights':            df['resource'].apply(lambda d: d.get('license', '')),
+            'identifier_raw':    df['resource'].apply(lambda d: d.get('identifier', '')),
+            'information':       df['resource'].apply(lambda d: d.get('landingPage', '')),
+
+            # --- Create Pass-through columns for the next steps in the pipeline ---
+            'spatial':           df['resource'].apply(lambda d: d.get('spatial', '')),
+            'distributions':     df['resource'].apply(lambda d: d.get('distribution', []) or [])
+        }
+        
+        return pd.DataFrame(output_data)
+
+    def arcgis_extract_distributions(self, df):
+        """
+        Sorts webs service links
+        """
+
+        def derive_dist_fields(dists):
+            out = {
+                'featureService': '',
+                'mapService': '',
+                'imageService': '',
+                'tileService': '',
+                'Format': '',
+            }
+            # Ensure 'dists' is a list before iterating
+            if not isinstance(dists, list):
+                dists = []
+
+            for dist in dists:
+                title = dist.get('title', '')
+                access_url = dist.get('accessURL', '') or ''
+                if title == 'ArcGIS GeoService' and access_url:
+                    if 'FeatureServer' in access_url:
+                        out['featureService'] = access_url
+                        out['Format'] = 'ArcGIS FeatureLayer'
+                    elif 'MapServer' in access_url:
+                        out['mapService'] = access_url
+                        out['Format'] = 'ArcGIS DynamicMapLayer'
+                    elif 'ImageServer' in access_url:
+                        out['imageService'] = access_url
+                        out['Format'] = 'ArcGIS ImageMapLayer'
+                    elif 'TileServer' in access_url:
+                        out['tileService'] = access_url
+                        out['Format'] = 'ArcGIS TiledMapLayer'
+            return pd.Series(out)
+
+        dist_df = df['distributions'].apply(derive_dist_fields)
+        # merge columns into df (aligned by index)
+        df = pd.concat([df, dist_df], axis=1)
+
+        return df
+
+
     def arcgis_compute_bbox_column(self, df):
         """
         Populate 'Bounding Box' using 'spatial' if it has 4 comma-separated numbers
@@ -269,20 +304,19 @@ class ArcGISHarvester(BaseHarvester):
         return df
 
 
-
     def arcgis_harvest_identifier_and_id(self, identifier: str) -> tuple:
         parsed = urlparse(identifier)
         qs = parse_qs(parsed.query)
 
         if 'id' in qs:
-            ds_id = qs['id'][0]
+            resource_id = qs['id'][0]
 
             # Append sublayer number if present
             if 'sublayer' in qs:
-                ds_id = f"{ds_id}_{qs['sublayer'][0]}"
+                resource_id = f"{resource_id}_{qs['sublayer'][0]}"
 
-            cleaned = f"https://hub.arcgis.com/datasets/{ds_id}"
-            return cleaned, ds_id
+            cleaned = f"https://hub.arcgis.com/datasets/{resource_id}"
+            return cleaned, resource_id
 
         return identifier, identifier
 
@@ -290,24 +324,6 @@ class ArcGISHarvester(BaseHarvester):
     def arcgis_parse_identifiers(self, df):
         ids = df['identifier_raw'].apply(self.arcgis_harvest_identifier_and_id)
         df[['Identifier', 'ID']] = pd.DataFrame(ids.tolist(), index=df.index)
-        return df
-
-    def arcgis_clean_descriptions(self, df):
-        def _clean(text):
-            text = text.replace("{{default.description}}", "").replace("{{description}}", "")
-            text = re.sub(r'[\n\r]+', ' ', text)
-            text = re.sub(r'\s{2,}', ' ', text)
-            return text.translate({
-                8217: "'",  # RIGHT SINGLE QUOTATION MARK → apostrophe
-                8220: '"',  # LEFT DOUBLE QUOTATION MARK → "
-                8221: '"',  # RIGHT DOUBLE QUOTATION MARK → "
-                160: "",    # NON-BREAKING SPACE → removed
-                183: "",    # MIDDLE DOT → removed
-                8226: "",   # BULLET → removed
-                8211: '-',  # EN DASH → hyphen
-                8203: ""    # ZERO WIDTH SPACE → removed
-            })
-        df['Description'] = df['Description'].apply(_clean)
         return df
 
     def arcgis_temporal_coverage(self, df):
@@ -330,8 +346,7 @@ class ArcGISHarvester(BaseHarvester):
     def arcgis_reformat_titles(self, df):
         """
         Updates the Title field by concatenating 'Alternative Title' and 'titlePlace',
-        with the titlePlace in square brackets. Handles missing values gracefully.
-        Example: "IDOT Waterway Ferries [Illinois]"
+        with the titlePlace in square brackets. 
         """
         df['Title'] = df.apply(
             lambda row: f"{row['Alternative Title']} [{row['titlePlace']}]"
@@ -364,8 +379,7 @@ class ArcGISHarvester(BaseHarvester):
         """
         keyword_map = {
             'lidar': 'LiDAR',
-            'polygon': 'Polygon data',
-            # Add more mappings here as needed
+            'polygon': 'Polygon data'
         }
 
         def match_keywords(row):
@@ -379,12 +393,7 @@ class ArcGISHarvester(BaseHarvester):
         return df
 
 
-
-
-
-
-
-
+# to do - fix this to run locally
 # def main():
 #     """
 #     Run ArcGIS harvestion standalone for local testing.
