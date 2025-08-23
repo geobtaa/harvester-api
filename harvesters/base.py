@@ -14,7 +14,7 @@ class BaseHarvester:
         Initialize harvester with a config dictionary. Should include paths to input files and output locations.
         """
         self.config = config
-        self.distribution_types = None  # Shared resource
+        self.distribution_types = None
 
     def load_reference_data(self):
         """
