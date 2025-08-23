@@ -1,7 +1,6 @@
 import csv
 import time
 import os
-import re
 
 import requests
 import pandas as pd
@@ -37,16 +36,9 @@ class SocrataHarvester(BaseHarvester):
                 yield f"[Socrata] Fetched {website_id} — {row.get('Title', 'No Title')}"
                 yield row
 
-    # def parse(self, fetched_records):
-    #     not needed
 
     def flatten(self, harvested_records):
-        """
-        De-nests the list of datasets within each hub record.
 
-        Transforms a list of [website + its_entire_catalog] into a flatter list 
-        where each item is a [website, single_dataset] pair.
-        """
         flattened_list = []
 
         for website_record in harvested_records:
@@ -56,23 +48,17 @@ class SocrataHarvester(BaseHarvester):
             # Extract the list of datasets from within the fetched catalog
             resources = website_record.get("fetched_catalog", {}).get("dataset", [])
             
-            # Uncomment in a rare case where 'dataset' might be a single dict instead of a list
-            # if isinstance(datasets, dict):
-            #     datasets = [datasets]
-
             # Creates a new, combined record for each individual dataset
             for resource in resources:
                 flattened_list.append({
                     "website": website_record,  # The complete record for the parent hub
-                    "resource": resource      # The record for one specific dataset
+                    "resource": resource      # The record for each dataset
                 })
 
         return flattened_list
 
     def build_dataframe(self, flattened_items):
-        """
-        Convert flattened [{'website':..., 'resource':...}] list to a DataFrame.
-        """
+
         df = pd.DataFrame(flattened_items)
 
         df = (
@@ -85,17 +71,17 @@ class SocrataHarvester(BaseHarvester):
 
     def derive_fields(self, df):
         df['ID'] = df['Identifier'].str.split('/views/', n=1).str[-1]
-        # df['Temporal Coverage'] = df['Date Modified']
 
         df = (
             df.pipe(self.socrata_temporal_coverage)
             .pipe(self.socrata_format_date_ranges)
             .pipe(self.socrata_reformat_titles)
+            .pipe(self.socrata_clean_creator_values)
+            .pipe(self.socrata_set_resource_type)
             .pipe(self.pasda_derive_geojson)
         )
 
         return df
-
 
     def add_defaults(self, df):
         df = super().add_defaults(df)
@@ -174,24 +160,19 @@ class SocrataHarvester(BaseHarvester):
 
     def socrata_filter_rows(self, df):
         def is_valid(row):
-            ds = row['resource']
+            resource = row['resource']
             title = (ds.get('title') or '').strip()
             if not title or title.startswith('{{'):
                 return False
 
-            keywords = [k.lower().strip() for k in ds.get('keyword', []) if isinstance(k, str)]
-            themes = [t.lower().strip() for t in ds.get('theme', [])] if isinstance(ds.get('theme'), list) else []
+            keywords = [k.lower().strip() for k in resource.get('keyword', []) if isinstance(k, str)]
+            themes = [t.lower().strip() for t in resource.get('theme', [])] if isinstance(resource.get('theme'), list) else []
 
             return 'gis' in keywords or 'gis/maps' in themes
 
         return df[df.apply(is_valid, axis=1)].reset_index(drop=True)
     
     def socrata_map_to_schema(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Combines normalization and schema mapping in a single step.
-        Extracts data from the 'website' and 'resource' columns, transforms it,
-        and creates a new DataFrame with the final schema.
-        """
 
         # Helper function to extract creator name, kept from original logic
         def get_creator(resource):
@@ -202,7 +183,7 @@ class SocrataHarvester(BaseHarvester):
 
         # Create a dictionary of Series, where each key is a final column name
         metadata_map = {
-            # --- Fields from the 'hub' dictionary ---
+            # --- Fields from the 'website' dictionary ---
             'Is Part Of':       df['website'].apply(lambda h: h.get('ID', '')),
             'Code':             df['website'].apply(lambda h: h.get('ID', '')),
             'Local Collection': df['website'].apply(lambda h: h.get('Title', '')),
@@ -213,7 +194,7 @@ class SocrataHarvester(BaseHarvester):
             'Member Of':        df['website'].apply(lambda h: h.get('Member Of', '')),
             'titlePlace':       df['website'].apply(lambda h: h.get('Publisher', '')),
 
-            # --- Fields from the 'ds' (dataset) dictionary ---
+            # --- Fields from the 'resource' (dataset) dictionary ---
             'Alternative Title': df['resource'].apply(lambda d: (d.get('title') or '').strip()),
             'Description':       df['resource'].apply(lambda d: d.get('description', '')),
             'Creator':           df['resource'].apply(get_creator),
@@ -248,8 +229,7 @@ class SocrataHarvester(BaseHarvester):
     def socrata_reformat_titles(self, df):
         """
         Updates the Title field by concatenating 'Alternative Title' and 'titlePlace',
-        with the titlePlace in square brackets. Handles missing values gracefully.
-        Example: "IDOT Waterway Ferries [Illinois]"
+        with the titlePlace in square brackets. 
         """
         df['Title'] = df.apply(
             lambda row: f"{row['Alternative Title']} [{row['titlePlace']}]"
@@ -261,23 +241,40 @@ class SocrataHarvester(BaseHarvester):
         )
         return df
     
-    # def socrata_clean_descriptions(self, df):
-    #     def _clean(text):
-    #         text = text.replace("{{default.description}}", "").replace("{{description}}", "")
-    #         text = re.sub(r'[\n\r]+', ' ', text)
-    #         text = re.sub(r'\s{2,}', ' ', text)
-    #         return text.translate({
-    #             8217: "'",  # RIGHT SINGLE QUOTATION MARK → apostrophe
-    #             8220: '"',  # LEFT DOUBLE QUOTATION MARK → "
-    #             8221: '"',  # RIGHT DOUBLE QUOTATION MARK → "
-    #             160: "",    # NON-BREAKING SPACE → removed
-    #             183: "",    # MIDDLE DOT → removed
-    #             8226: "",   # BULLET → removed
-    #             8211: '-',  # EN DASH → hyphen
-    #             8203: ""    # ZERO WIDTH SPACE → removed
-    #         })
-    #     df['Description'] = df['Description'].apply(_clean)
-    #     return df
+    def socrata_clean_creator_values(self, df):
+        def _clean(value):
+            if isinstance(value, dict) and 'name' in value:
+                return value['name']
+            elif isinstance(value, str):
+                match = re.match(r"\\{\\s*'name'\\s*:\\s*'(.+?)'\\s*\\}", value)
+                if match:
+                    return match.group(1)
+                return value
+            return value
+    
+        df['Creator'] = df['Creator'].apply(_clean)
+        return df
+    
+    def socrata_set_resource_type(self, df):
+        """
+        Assign values to 'Resource Type' based on keyword matches found in Title, Description, or Keyword.
+        Existing values are preserved unless a new match is found.
+        """
+        keyword_map = {
+            'lidar': 'LiDAR',
+            'polygon': 'Polygon data'
+        }
+
+        def match_keywords(row):
+            combined_text = f"{row.get('Alternative Title', '')} {row.get('Description', '')} {row.get('Keyword', '')}".lower()
+            for keyword, resource_type in keyword_map.items():
+                if keyword in combined_text:
+                    return resource_type
+            return row.get('Resource Type', '')  # Keep existing value if no match
+
+        df['Resource Type'] = df.apply(match_keywords, axis=1)
+        return df
+    
     
     def pasda_derive_geojson(self, df):
         """

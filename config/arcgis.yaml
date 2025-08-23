@@ -1,6 +1,6 @@
 name: ArcGIS Hubs Harvest
 type: arcgis
-hub_list_csv: inputs/arcHubs.csv
+input_csv: inputs/arcHubs.csv
 output_primary_csv: outputs/arcgis_primary.csv
 output_distributions_csv: outputs/arcgis_distributions.csv
 

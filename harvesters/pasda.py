@@ -98,20 +98,11 @@ class PasdaHarvester(BaseHarvester):
         return pd.DataFrame(rows)
 
 
-
-    def flatten(self, harvested_data):
-        """
-        Flattening not needed; returns harvested_data unchanged.
-        """
-        return harvested_data
-
     def build_dataframe(self, parsed_or_flattened_data):
         return pd.DataFrame(parsed_or_flattened_data)
 
     def derive_fields(self, df):
-        """
-        Apply PASDA-specific transformations in order.
-        """
+        
         df = creator_match(df, state="Pennsylvania")
 
         return (
