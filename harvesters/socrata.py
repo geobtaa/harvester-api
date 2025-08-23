@@ -1,6 +1,7 @@
 import csv
 import time
 import os
+import re
 
 import requests
 import pandas as pd
@@ -70,15 +71,16 @@ class SocrataHarvester(BaseHarvester):
 
 
     def derive_fields(self, df):
-        df['ID'] = df['Identifier'].str.split('/views/', n=1).str[-1]
-
+        df = super().derive_fields(df)
+        
         df = (
-            df.pipe(self.socrata_temporal_coverage)
+            df.pipe(self.socrata_parse_identifiers)
+            .pipe(self.socrata_temporal_coverage)
             .pipe(self.socrata_format_date_ranges)
             .pipe(self.socrata_reformat_titles)
             .pipe(self.socrata_clean_creator_values)
             .pipe(self.socrata_set_resource_type)
-            .pipe(self.pasda_derive_geojson)
+            .pipe(self.socrata_derive_geojson)
         )
 
         return df
@@ -142,8 +144,6 @@ class SocrataHarvester(BaseHarvester):
 
         return df
 
-
-
     def clean(self, df):
         df = super().clean(df)
         return df
@@ -161,7 +161,7 @@ class SocrataHarvester(BaseHarvester):
     def socrata_filter_rows(self, df):
         def is_valid(row):
             resource = row['resource']
-            title = (ds.get('title') or '').strip()
+            title = (resource.get('title') or '').strip()
             if not title or title.startswith('{{'):
                 return False
 
@@ -209,6 +209,22 @@ class SocrataHarvester(BaseHarvester):
 
         return pd.DataFrame(metadata_map)
     
+    def socrata_parse_identifiers(self, df):
+        """
+        Derive ID from Identifier; handles common Socrata URL forms.
+        Example: https://data.city.gov/views/abcd-1234 → ID=abcd-1234
+        """
+        def _to_id(identifier):
+            s = str(identifier or "")
+            # common Socrata patterns
+            for cut in ("/views/", "/d/"):
+                if cut in s:
+                    return s.split(cut, 1)[-1].split("/", 1)[0]
+            return s.rsplit("/", 1)[-1] if "/" in s else s
+
+        df["ID"] = df["Identifier"].apply(_to_id)
+        return df
+        
     def socrata_temporal_coverage(self, df):
         """
         Adds a 'Temporal Coverage' column based on Title or Date Modified.
@@ -245,16 +261,13 @@ class SocrataHarvester(BaseHarvester):
         def _clean(value):
             if isinstance(value, dict) and 'name' in value:
                 return value['name']
-            elif isinstance(value, str):
-                match = re.match(r"\\{\\s*'name'\\s*:\\s*'(.+?)'\\s*\\}", value)
-                if match:
-                    return match.group(1)
-                return value
+            if isinstance(value, str):
+                m = re.match(r"\{\s*'name'\s*:\s*'(.+?)'\s*\}", value)
+                return m.group(1) if m else value
             return value
-    
         df['Creator'] = df['Creator'].apply(_clean)
         return df
-    
+ 
     def socrata_set_resource_type(self, df):
         """
         Assign values to 'Resource Type' based on keyword matches found in Title, Description, or Keyword.
@@ -276,9 +289,9 @@ class SocrataHarvester(BaseHarvester):
         return df
     
     
-    def pasda_derive_geojson(self, df):
+    def socrata_derive_geojson(self, df):
         """
-        Add a 'geojson' distribution link for certain hubs (e.g., PASDA).
+        Add a 'geojson' distribution link for certain hubs
         Uses the hub Identifier (portal base URL) and the dataset's ID.
         """
         allowed_hubs = {'01c-01', '12b-17031-2'}
@@ -298,4 +311,5 @@ class SocrataHarvester(BaseHarvester):
 
         df['geo_json'] = df.apply(build_geojson, axis=1)
         return df
+
 

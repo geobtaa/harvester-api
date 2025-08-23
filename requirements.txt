@@ -5,3 +5,6 @@ pyyaml
 requests
 pandas
 python-multipart
+
+## For Humanitarian Data Exchange
+hdx-python-api==VERSION

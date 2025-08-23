@@ -187,3 +187,35 @@ async def run_pasda_stream():
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+
+@app.get("/run-hdx-stream")
+async def run_hsx_stream():
+    from harvesters.hdx import HdxHarvester
+
+    async def event_stream():
+        config_path = "config/hdx.yaml"
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        harvester = HdxHarvester(config)
+        harvester.load_reference_data()
+
+        yield "data: Starting HDX harvest...\n\n"
+        raw_html = harvester.fetch()
+        yield "data: Fetched JSON, now parsing...\n\n"
+
+        parsed = harvester.parse(raw_html)
+        flat = harvester.flatten(parsed)
+        df = harvester.build_dataframe(flat)
+        df = harvester.derive_fields(df)
+        df = harvester.add_defaults(df)
+        df = harvester.add_provenance(df)
+        df = harvester.clean(df)
+        harvester.validate(df)
+        harvester.write_outputs(df)
+
+        yield "data: HDX harvest complete. Check output folder.\n\n"
+        yield "data: DONE\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+

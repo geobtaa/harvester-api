@@ -72,6 +72,7 @@ class ArcGISHarvester(BaseHarvester):
         return df
 
     def derive_fields(self, df):
+        df = super().derive_fields(df)
         df = (
             df.pipe(self.arcgis_parse_identifiers)
             .pipe(self.arcgis_temporal_coverage)
@@ -391,6 +392,8 @@ class ArcGISHarvester(BaseHarvester):
 
         df['Resource Type'] = df.apply(match_keywords, axis=1)
         return df
+    
+
 
 
 # to do - fix this to run locally
