@@ -64,14 +64,14 @@ class PasdaHarvester(BaseHarvester):
                 if not description or not publisher:
                     continue
 
-                # Validate Metadata and Download links
+                # Validate Metadata inks
                 meta_tag = row.find('a', string='Metadata')
                 if not meta_tag or not meta_tag.get('href'):
                     continue
 
                 metadata_link = f"https://www.pasda.psu.edu/uci/{meta_tag['href']}"
-                dl_tag = row.find('a', string='Download')
-                download_link = f"https://www.pasda.psu.edu/uci/{dl_tag['href']}" if dl_tag and dl_tag.get('href') else ''
+                
+                
 
                 landing_page = f"https://www.pasda.psu.edu/uci/{entry['href']}"
                 identifier = 'pasda-' + landing_page.rsplit('=', 1)[-1]
@@ -85,7 +85,7 @@ class PasdaHarvester(BaseHarvester):
                     'Alternative Title': title,
                     'Description': description,
                     'html': metadata_link,
-                    'download': download_link,
+                    # 'download': download_link,
                     'information': landing_page,
                     'ID': identifier
                 })

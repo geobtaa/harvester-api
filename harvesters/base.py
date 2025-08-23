@@ -7,6 +7,7 @@ from utils.dataframe_cleaner import dataframe_cleaning
 from utils.spatial_cleaner import spatial_cleaning
 from utils.validation import validation_pipeline
 from utils.distribution_writer import load_distribution_types
+from utils.derive_themes import derive_themes_from_keywords
 
 class BaseHarvester:
     def __init__(self, config):
@@ -15,13 +16,36 @@ class BaseHarvester:
         """
         self.config = config
         self.distribution_types = None
+        self.theme_map = {} # Initialize theme_map
 
     def load_reference_data(self):
         """
-        Optional: Load additional lookup tables or reference data needed for harvesting.
-        Override this method in subclasses that need custom data (e.g., county lookups).
+        Load shared lookup tables and reference data needed for harvesting.
+        This now includes distribution types and the theme keyword map.
         """
         self.distribution_types = load_distribution_types()
+        
+        # Load and prepare theme data for all harvesters
+        themes_csv_path = self.config.get("themes_csv", "reference_data/themes.csv")
+        try:
+            themes_df = pd.read_csv(themes_csv_path, dtype=str).fillna('')
+            
+            for _, row in themes_df.iterrows():
+                theme = row['Theme']
+                keywords = row['Keyword'].split('|')
+                
+                for keyword in keywords:
+                    clean_keyword = keyword.strip().lower()
+                    if clean_keyword:
+                        self.theme_map[clean_keyword] = theme
+            
+            # Add a success message to confirm the map was loaded.
+            print(f"[Base] Successfully loaded {len(self.theme_map)} theme keyword mappings.")
+
+        except FileNotFoundError:
+            print(f"[Base] Warning: Themes CSV not found at {themes_csv_path}. Themes will not be derived.")
+        except Exception as e:
+            print(f"[Base] Error loading themes CSV: {e}")
 
     def fetch(self):
         """
@@ -53,6 +77,8 @@ class BaseHarvester:
         """
         Override to add specific transformations.
         """
+        df = derive_themes_from_keywords(df, self.theme_map)
+
         return df
 
     def add_defaults(self, df):
