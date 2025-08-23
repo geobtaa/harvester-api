@@ -7,7 +7,7 @@
     body { font-family: sans-serif; margin: 2em; }
     button { margin-left: 1em; }
     #status { margin-top: 2em; color: green; }
-    .nav-links { margin: 2em 0; }
+    .nav-links { margin: 2em 0; line-height: 1.5;}
     .nav-links a { display: inline-block; margin-right: 1.5em; font-weight: bold; }
   </style>
 </head>
@@ -15,61 +15,17 @@
   <h1>Metadata Harvester Admin</h1>
 
   <div class="nav-links">
-    <a href="/static/arcgis.html">ArcGIS Harvester</a>
-    <a href="/static/socrata.html">Socrata Harvester</a>
-    <a href="/static/ogmWisc.html">OpenGeoMetadata for edu.wisc Harvester</a>
-    <a href="/static/pasda.html">PASDA Harvester</a>
-    <a href="/static/hdx.html">HDX Harvester</a>
+    <ul>
+    <li><a href="/static/arcgis.html">ArcGIS Harvester</a></li>
+    <li><a href="/static/socrata.html">Socrata Harvester</a></li>
+    <li><a href="/static/ogmWisc.html">OpenGeoMetadata for edu.wisc Harvester</a></li>
+    <li><a href="/static/pasda.html">PASDA Harvester</a></li>
+    <li><a href="/static/hdx.html">HDX Harvester</a></li>
+    </ul>
   </div>
 
-  <button onclick="openSchema()">Open Metadata Schema</button>
-  <button onclick="openDistributionTypes()">Open Distribution Types</button>
+  <!-- <button onclick="openSchema()">Open Metadata Schema</button>
+  <button onclick="openDistributionTypes()">Open Distribution Types</button> -->
 
-  <!-- <h2>Quick Harvest Jobs</h2>
-  <ul id="job-list"></ul>
-
-  <div id="status"></div>
-
-  <script>
-    const apiBase = "";
-
-    async function fetchJobs() {
-      const res = await fetch(`${apiBase}/jobs`);
-      const jobs = await res.json();
-      const list = document.getElementById("job-list");
-      list.innerHTML = "";
-      jobs.forEach(job => {
-        const li = document.createElement("li");
-        li.textContent = `${job.name} `;
-        const btn = document.createElement("button");
-        btn.textContent = "Run";
-        btn.onclick = () => runJob(job.id);
-        li.appendChild(btn);
-        list.appendChild(li);
-      });
-    }
-
-    async function runJob(jobId) {
-      document.getElementById("status").textContent = `Running job ${jobId}...`;
-      try {
-        const res = await fetch(`${apiBase}/jobs/${jobId}/run`, { method: "POST" });
-        const result = await res.json();
-        document.getElementById("status").textContent = `✅ Job ${jobId} finished. Outputs: ${result.primary_csv} and ${result.distributions_csv}`;
-      } catch (e) {
-        console.error(e);
-        document.getElementById("status").textContent = `❌ Error running job ${jobId}`;
-      }
-    }
-
-    function openSchema() {
-      window.open("/schema", "_blank");
-    }
-
-    function openDistributionTypes() {
-      window.open("/distribution-types", "_blank");
-    }
-
-    fetchJobs();
-  </script> -->
 </body>
 </html>
