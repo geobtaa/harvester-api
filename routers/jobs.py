@@ -9,13 +9,15 @@ from harvesters.socrata import SocrataHarvester
 from harvesters.pasda import PasdaHarvester
 from harvesters.ogmWisc import OgmWiscHarvester
 from harvesters.hdx import HdxHarvester
+from harvesters.isgs import IsgsHarvester
 
 HARVESTER_REGISTRY = {
     "arcgis": ArcGISHarvester,
     "socrata": SocrataHarvester,
     "pasda": PasdaHarvester,
     "ogmWisc": OgmWiscHarvester,
-    "hdx": HdxHarvester
+    "hdx": HdxHarvester,
+    "isgs": IsgsHarvester
 }
 
 

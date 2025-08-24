@@ -219,3 +219,51 @@ async def run_hsx_stream():
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
+@app.get("/run-isgs-stream")
+async def run_isgs_stream():
+    from harvesters.isgs import IsgsHarvester
+    import yaml
+
+    async def event_stream():
+        config_path = "config/isgs.yaml"
+        with open(config_path, "r") as f:
+            config = yaml.safe_load(f)
+
+        harvester = IsgsHarvester(config)
+        harvester.load_reference_data()
+
+        fetched_records = []
+        # This loop works because fetch() is a generator
+        for item in harvester.fetch():
+            # The ISGS harvester only yields data tuples, not status strings,
+            # but we keep the structure for consistency.
+            if isinstance(item, str):
+                yield f"data: {item}\n\n"
+            else:
+                fetched_records.append(item)
+
+            # A small sleep helps keep the stream responsive
+            await asyncio.sleep(0.01)
+
+
+        # Proceed with the remaining steps, which now work correctly
+        yield f"data: Finished fetching {len(fetched_records)} records. Now parsing...\n\n"
+        
+        # The parse method now correctly accepts the full list
+        parsed = harvester.parse(fetched_records)
+        
+        flat = harvester.flatten(parsed)
+        df = harvester.build_dataframe(flat)
+        df = harvester.derive_fields(df)
+        df = harvester.add_defaults(df)
+        df = harvester.add_provenance(df)
+        df = harvester.clean(df)
+        harvester.validate(df)
+        harvester.write_outputs(df)
+
+        yield f"data: Harvester complete! Check the output folder.\n\n"
+        yield "data: DONE\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
