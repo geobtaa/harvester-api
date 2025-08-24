@@ -7,11 +7,11 @@ Economy,economy|labour|revenue|commerce|industry|tourism|ecotourism|forestry|fis
 Elevation,elevation|altitude|bathymetry|LiDAR|slope|topographic|topography|contour
 Environment,environment|pollution|waste|nature|landscape
 Events,natural disasters|concerts|races|protests|arrests|accidents
-Geology,geoscientificInformation|geophysical|minerals|rocks|earthquake|volcanic|volcano|landslides|soils|permafrost|hydrogeology|erosion
+Geology,geoscientificInformation|geophysical|minerals|rocks|earthquake|volcanic|volcano|landslides|soils|permafrost|hydrogeology|erosion|geology
 Health,health|disease|illness|hygiene|mental|covid
-Imagery,imageryBaseMapsEarthCover|aerial|orthoimagery|satellite|multispectral
-Inland Waters,inlandWaters|rivers|glaciers|lakes|dams|floods|canals|water
-Land Cover,imageryBaseMapsEarthCover|forests|wetlands|impervious|land use
+Imagery,imageryBaseMapsEarthCover|aerial|orthoimagery|satellite|multispectral|imagery
+Inland Waters,inlandWaters|rivers|glaciers|lakes|dams|floods|canals|water|hydrology
+Land Cover,imageryBaseMapsEarthCover|forests|wetlands|impervious|land use|landcover|land cover
 Location,location|locations|addresses|geodetic|control points|postal|place names|populated|schools
 Military,intelligenceMilitary|barracks|surveilliance
 Oceans,oceans|tides|tidal waves|coastal|reefs|coast
