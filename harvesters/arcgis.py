@@ -83,8 +83,6 @@ class ArcGISHarvester(BaseHarvester):
             .pipe(self.arcgis_set_resource_type)
         )
 
-        # Drop any remaining dict-based fields before deduplication/cleaning
-        # df = df.drop(columns=['keywords_list', 'spatial', 'distributions'], errors='ignore')
         return df
 
     def add_defaults(self, df):
@@ -103,7 +101,7 @@ class ArcGISHarvester(BaseHarvester):
 
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "ArcGIS Hub"
-        df["Accrual Method"] = "Scripted harvest"
+        df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "R01_arcgis"
         df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
@@ -159,16 +157,17 @@ class ArcGISHarvester(BaseHarvester):
         distributions_df = generate_secondary_table(primary_df.copy(), self.distribution_types)
         return super().write_outputs(primary_df, distributions_df)
 
-# --- ArcGIS-Specific Field Derive Functions --- #
+# --- ArcGIS-Specific Functions --- #
 
     def arcgis_filter_rows(self, df):
-        # ... (This method remains unchanged)
+
         ALLOWED_TITLES = {'Shapefile'}
         ACCESS_PATTERNS = ['ImageServer']  # extend if needed, e.g., 'FeatureServer', 'MapServer'
 
         def is_valid(row):
             resource = row['resource']
-            title = (resource.get('title') or '').strip()
+            # CORRECTED: Cast to string before stripping to avoid AttributeError
+            title = str(resource.get('title', '')).strip()
             if not title or title.startswith('{{'):
                 return False
 
@@ -178,7 +177,7 @@ class ArcGISHarvester(BaseHarvester):
 
             has_valid_title = any((dist.get('title') in ALLOWED_TITLES) for dist in dists)
             has_valid_url = any(
-                any(pat in (dist.get('accessURL') or '') for pat in ACCESS_PATTERNS)
+                any(pat in str(dist.get('accessURL', '')) for pat in ACCESS_PATTERNS)
                 for dist in dists
             )
             return has_valid_title or has_valid_url
@@ -201,17 +200,17 @@ class ArcGISHarvester(BaseHarvester):
             'Publisher':        df['website'].apply(lambda h: h.get('Creator', '')),
             'Endpoint URL':     df['website'].apply(lambda h: h.get('Endpoint URL', '')),
             'Spatial Coverage': df['website'].apply(lambda h: h.get('Spatial Coverage', '')),
-            'Bounding Box':     df['website'].apply(lambda h: h.get('Bounding Box', '')),
+            'default_bbox':     df['website'].apply(lambda h: h.get('Bounding Box', '')),
             'Member Of':        df['website'].apply(lambda h: h.get('Member Of', '')),
             'titlePlace':       df['website'].apply(lambda h: h.get('Publisher', '')),
 
             # --- Map Dataset fields directly to Final Schema ---
-            'Alternative Title': df['resource'].apply(lambda d: (d.get('title') or '').strip()),
+            'Alternative Title': df['resource'].apply(lambda d: str(d.get('title', '')).strip()),
             'Description':       df['resource'].apply(lambda d: d.get('description', '')),
             'Creator':           df['resource'].apply(get_creator),
             'Keyword':           df['resource'].apply(lambda d: '|'.join(k.strip() for k in d.get('keyword', []) if isinstance(k, str)).replace(' ', '')),
-            'Date Issued':       df['resource'].apply(lambda d: (d.get('issued', '') or '').split('T')[0]),
-            'Date Modified':     df['resource'].apply(lambda d: (d.get('modified', '') or '').split('T')[0]),
+            'Date Issued':       df['resource'].apply(lambda d: str(d.get('issued', '')).split('T')[0]),
+            'Date Modified':     df['resource'].apply(lambda d: str(d.get('modified', '')).split('T')[0]),
             'Rights':            df['resource'].apply(lambda d: d.get('license', '')),
             'identifier_raw':    df['resource'].apply(lambda d: d.get('identifier', '')),
             'information':       df['resource'].apply(lambda d: d.get('landingPage', '')),
@@ -241,8 +240,8 @@ class ArcGISHarvester(BaseHarvester):
                 dists = []
 
             for dist in dists:
-                title = dist.get('title', '')
-                access_url = dist.get('accessURL', '') or ''
+                title = str(dist.get('title', ''))
+                access_url = str(dist.get('accessURL', ''))
                 if title == 'ArcGIS GeoService' and access_url:
                     if 'FeatureServer' in access_url:
                         out['featureService'] = access_url
@@ -392,20 +391,3 @@ class ArcGISHarvester(BaseHarvester):
 
         df['Resource Type'] = df.apply(match_keywords, axis=1)
         return df
-    
-
-
-
-# to do - fix this to run locally
-# def main():
-#     """
-#     Run ArcGIS harvestion standalone for local testing.
-#     """
-#     config_path = "config/arcgis.yaml"
-#     schema_path = "schemas/geobtaa_schema.yaml"
-
-#     with open(config_path, "r") as f:
-#         config = yaml.safe_load(f)
-
-#     Harvester = ArcGISHarvester(config, schema_path)
-#     Harvester.harvest()
