@@ -138,7 +138,7 @@ class PasdaHarvester(BaseHarvester):
 
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "HTML/JS"
-        df["Accrual Method"] = "Scripted harvest"
+        df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "R08_pasda"
         df["Supported Metadata Schema"] = "Local"
         df["Endpoint Description"] = "HTML"
