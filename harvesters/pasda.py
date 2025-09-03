@@ -139,7 +139,7 @@ class PasdaHarvester(BaseHarvester):
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "HTML/JS"
         df["Accrual Method"] = "Automated retrieval"
-        df["Harvest Workflow"] = "R08_pasda"
+        df["Harvest Workflow"] = "py_pasda"
         df["Supported Metadata Schema"] = "Local"
         df["Endpoint Description"] = "HTML"
         df["Endpoint URL"] = "https://www.pasda.psu.edu/uci/SearchResults.aspx?Keyword=."

@@ -148,7 +148,7 @@ class OgmWiscHarvester(BaseHarvester):
     
     def add_provenance(self, df):
         df = super().add_provenance(df)
-        df['Accrual Method'] = 'GBL-1.0'
+        df['Accrual Method'] = 'Mediated deposit'
         return df
     
     def clean(self, df):
