@@ -102,7 +102,7 @@ class ArcGISHarvester(BaseHarvester):
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "ArcGIS Hub"
         df["Accrual Method"] = "Automated retrieval"
-        df["Harvest Workflow"] = "py_arcgis"
+        df["Harvest Workflow"] = "py_arcgis_hub"
         df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
@@ -114,7 +114,7 @@ class ArcGISHarvester(BaseHarvester):
         )
 
         # ---------- load hub list and evaluate indexing status ----------
-        hub_path = self.config.get("hub_list_csv")
+        hub_path = self.config.get("input_csv")
 
         if hub_path and os.path.exists(hub_path):
             hub_df = pd.read_csv(hub_path, dtype=str).fillna("")
@@ -139,7 +139,7 @@ class ArcGISHarvester(BaseHarvester):
             print(f"[ArcGIS] Updated Status for {len(hub_df)} hub records and "
                 f"appended them to the harvested metadata dataframe.")
         else:
-            print("[ArcGIS] hub_list_csv not found or unspecified.")
+            print("[ArcGIS] input_csv not found or unspecified.")
 
         return df
 
