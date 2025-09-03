@@ -198,8 +198,8 @@ class IsgsHarvester(BaseHarvester):
 
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "Custom data portal"
-        df["Accrual Method"] = "Scripted harvest"
-        df["Harvest Workflow"] = "R10_isgs"
+        df["Accrual Method"] = "Automated retrieval"
+        df["Harvest Workflow"] = "py_isgs"
         df["Supported Metadata Schema"] = "Local"
         df["Endpoint Description"] = "HTML"
         df["Endpoint URL"] = "https://clearinghouse.isgs.illinois.edu/data"

@@ -102,7 +102,7 @@ class ArcGISHarvester(BaseHarvester):
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "ArcGIS Hub"
         df["Accrual Method"] = "Automated retrieval"
-        df["Harvest Workflow"] = "R01_arcgis"
+        df["Harvest Workflow"] = "py_arcgis"
         df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
