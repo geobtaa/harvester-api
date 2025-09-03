@@ -159,7 +159,7 @@ class HdxHarvester(BaseHarvester):
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "CKAN"
         df["Accrual Method"] = "Automated retrieval"
-        df["Harvest Workflow"] = "R03_hdx"
+        df["Harvest Workflow"] = "py_hdx"
         df["Supported Metadata Schema"] = "HDX CKAN API"
         df["Endpoint Description"] = "CKAN API"
         df["Provenance Statement"] = df.apply(
