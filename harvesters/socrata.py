@@ -103,7 +103,7 @@ class SocrataHarvester(BaseHarvester):
         # ---------- provenance fields for harvested dataset rows ----------
         df["Source Platform"] = "Socrata"
         df["Accrual Method"] = "Automated retrieval"
-        df["Harvest Workflow"] = "R02_socrata"
+        df["Harvest Workflow"] = "py_socrata"
         df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
