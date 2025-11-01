@@ -5,6 +5,7 @@ pyyaml
 requests
 pandas
 python-multipart
+typing_extensions<4.15
 
 ## For Humanitarian Data Exchange
 hdx-python-api

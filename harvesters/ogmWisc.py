@@ -149,6 +149,11 @@ class OgmWiscHarvester(BaseHarvester):
     def add_provenance(self, df):
         df = super().add_provenance(df)
         df['Accrual Method'] = 'Mediated deposit'
+        df["Source Platform"] = "GeoBlacklight"
+        df["Harvest Workflow"] = "py_ogm_wisc"
+        df["Supported Metadata Schema"] = "GBL 1.0"
+        df["Endpoint Description"] = "GitHub"
+        df["Endpoint URL"] = "https://github.com/opengeometadata/edu.wisc"
         return df
     
     def clean(self, df):
