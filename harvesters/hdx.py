@@ -160,6 +160,7 @@ class HdxHarvester(BaseHarvester):
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_hdx"
         df["Supported Metadata Schema"] = "HDX CKAN API"
+        df["Endpoint URL"] = "https://data.humdata.org/api/3/"
         df["Endpoint Description"] = "CKAN API"
         df["Provenance Statement"] = df.apply(
             lambda row: (
