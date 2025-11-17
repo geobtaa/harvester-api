@@ -143,7 +143,7 @@ class PasdaHarvester(BaseHarvester):
         df["Supported Metadata Schema"] = "Local"
         df["Endpoint Description"] = "HTML"
         df["Endpoint URL"] = "https://www.pasda.psu.edu/uci/SearchResults.aspx?Keyword=."
-        df["Provenance Statement"] = "The metadata for this resource was last retrieved from PASDA on {today}."
+        df["Provenance Statement"] = f"The metadata for this resource was last retrieved from PASDA on {today}."
 
         return df
     

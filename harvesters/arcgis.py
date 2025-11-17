@@ -192,6 +192,16 @@ class ArcGISHarvester(BaseHarvester):
                 return pub.get('name') or next(iter(pub.values()), '')
             return pub or ''
 
+        def get_first_spatial(website):
+            spatial = website.get('Spatial Coverage', '')
+            if isinstance(spatial, list):
+                for val in spatial:
+                    if isinstance(val, str) and val.strip():
+                        return val.strip()
+                return ''
+            # Spatial Coverage is stored as a pipe-delimited string; grab the first entry.
+            return str(spatial).split('|')[0].strip()
+
         output_data = {
             # --- Map Hub fields directly to Final Schema ---
             'Is Part Of':       df['website'].apply(lambda h: h.get('ID', '')),
@@ -202,7 +212,7 @@ class ArcGISHarvester(BaseHarvester):
             'Spatial Coverage': df['website'].apply(lambda h: h.get('Spatial Coverage', '')),
             'default_bbox':     df['website'].apply(lambda h: h.get('Bounding Box', '')),
             'Member Of':        df['website'].apply(lambda h: h.get('Member Of', '')),
-            'titlePlace':       df['website'].apply(lambda h: h.get('Publisher', '')),
+            'titlePlace':       df['website'].apply(get_first_spatial),
 
             # --- Map Dataset fields directly to Final Schema ---
             'Alternative Title': df['resource'].apply(lambda d: str(d.get('title', '')).strip()),
