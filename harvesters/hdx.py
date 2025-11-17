@@ -142,11 +142,10 @@ class HdxHarvester(BaseHarvester):
         df['Display Note'] = "Tip: Check “Visit Source” link for download options."
         # df['Language'] = 'eng'
         df['Resource Class'] = 'Datasets'
-        df['Local Collection'] = 'Humanitarian Data Exchange'
         df['Code'] = '99-1400'
         df['Member Of'] = 'b0153110-e455-4ced-9114-9b13250a7093'
         df['Is Part Of'] = '99-1400'
-        df['Publisher'] = 'The Centre for Humanitarian Data'
+        df['Publisher'] = 'Humanitarian Data Exchange'
 
         return df
     
@@ -164,8 +163,7 @@ class HdxHarvester(BaseHarvester):
         df["Endpoint Description"] = "CKAN API"
         df["Provenance Statement"] = df.apply(
             lambda row: (
-                f"The metadata for this resource was last retrieved from "
-                f"{row.get('Local Collection', ' CKAN')} on {today}."
+                f"The metadata for this resource was last retrieved from Humanitarian Data Exchange on {today}."
             ),
             axis=1,
         )
@@ -187,9 +185,8 @@ class HdxHarvester(BaseHarvester):
     
 # --- HDX Specific Functions --- #
 
-    import json # Add this import at the top of your hdx.py file
+    import json
 
-# ... inside your HdxHarvester class ...
 
     def hdx_map_to_schema(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -246,8 +243,6 @@ class HdxHarvester(BaseHarvester):
 
         return df_out
     
-
-    # Add these new methods to your HdxHarvester class
 
     def _lookup_spatial_values(self, place_names_str, lookup_map):
         """Helper to look up a pipe-separated list of names in a given map."""
@@ -318,8 +313,6 @@ class HdxHarvester(BaseHarvester):
         df['Bounding Box'] = df['Bounding Box'].apply(self._combine_bounding_boxes)
 
         return df
-    
-    # Add this new method to your HdxHarvester class
 
     def _parse_hdx_date_range(self, date_str):
         """
@@ -345,10 +338,6 @@ class HdxHarvester(BaseHarvester):
             # Ensure both are valid 4-digit years
             if not (start_year.isdigit() and len(start_year) == 4 and end_year.isdigit() and len(end_year) == 4):
                  return None
-
-            # --- THIS IS THE CHANGE ---
-            # The special case for a single year is removed.
-            # We now always format the output as a YYYY-YYYY range.
             return f"{start_year}-{end_year}"
 
         except Exception:
@@ -385,8 +374,6 @@ class HdxHarvester(BaseHarvester):
         except Exception:
             # Return None if any parsing error occurs
             return None
-
-    # Replace your existing hdx_derive_date_range method with this one.
 
     def hdx_derive_date_range(self, df: pd.DataFrame) -> pd.DataFrame:
         """

@@ -109,7 +109,7 @@ class SocrataHarvester(BaseHarvester):
         df["Provenance Statement"] = df.apply(
             lambda row: (
                 f"The metadata for this resource was last retrieved from "
-                f"{row.get('Local Collection', ' Open Data Portal')} on {today}."
+                f"{row.get('Publisher', ' Open Data Portal')} on {today}."
             ),
             axis=1,
         )
@@ -180,19 +180,28 @@ class SocrataHarvester(BaseHarvester):
             if isinstance(pub, dict):
                 return pub.get('name') or next(iter(pub.values()), '')
             return pub or ''
+        
+        def get_first_spatial(website):
+            spatial = website.get('Spatial Coverage', '')
+            if isinstance(spatial, list):
+                for val in spatial:
+                    if isinstance(val, str) and val.strip():
+                        return val.strip()
+                return ''
+            # Spatial Coverage is stored as a pipe-delimited string; grab the first entry.
+            return str(spatial).split('|')[0].strip()
 
         # Create a dictionary of Series, where each key is a final column name
         metadata_map = {
             # --- Fields from the 'website' dictionary ---
             'Is Part Of':       df['website'].apply(lambda h: h.get('ID', '')),
             'Code':             df['website'].apply(lambda h: h.get('ID', '')),
-            'Local Collection': df['website'].apply(lambda h: h.get('Title', '')),
-            'Publisher':        df['website'].apply(lambda h: h.get('Publisher', '')),
+            'Publisher':        df['website'].apply(lambda h: h.get('Title', '')),
             'Endpoint URL':     df['website'].apply(lambda h: h.get('Endpoint URL', '')),
             'Spatial Coverage': df['website'].apply(lambda h: h.get('Spatial Coverage', '')),
             'Bounding Box':     df['website'].apply(lambda h: h.get('Bounding Box', '')),
             'Member Of':        df['website'].apply(lambda h: h.get('Member Of', '')),
-            'titlePlace':       df['website'].apply(lambda h: h.get('Publisher', '')),
+            'titlePlace':       df['website'].apply(get_first_spatial),
 
             # --- Fields from the 'resource' (dataset) dictionary ---
             'Alternative Title': df['resource'].apply(lambda d: (d.get('title') or '').strip()),

@@ -108,7 +108,7 @@ class ArcGISHarvester(BaseHarvester):
         df["Provenance Statement"] = df.apply(
             lambda row: (
                 f"The metadata for this resource was last retrieved from "
-                f"{row.get('Local Collection', ' ArcGIS Hub')} on {today}."
+                f"{row.get('Publisher', ' ArcGIS Hub')} on {today}."
             ),
             axis=1,
         )
@@ -206,8 +206,8 @@ class ArcGISHarvester(BaseHarvester):
             # --- Map Hub fields directly to Final Schema ---
             'Is Part Of':       df['website'].apply(lambda h: h.get('ID', '')),
             'Code':             df['website'].apply(lambda h: h.get('ID', '')),
-            'Local Collection': df['website'].apply(lambda h: h.get('Title', '')),
-            'Publisher':        df['website'].apply(lambda h: h.get('Creator', '')),
+            'Publisher':        df['website'].apply(lambda h: h.get('Title', '')),
+            # 'Publisher':        df['website'].apply(lambda h: h.get('Creator', '')),
             'Endpoint URL':     df['website'].apply(lambda h: h.get('Endpoint URL', '')),
             'Spatial Coverage': df['website'].apply(lambda h: h.get('Spatial Coverage', '')),
             'default_bbox':     df['website'].apply(lambda h: h.get('Bounding Box', '')),

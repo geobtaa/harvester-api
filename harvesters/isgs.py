@@ -177,9 +177,9 @@ class IsgsHarvester(BaseHarvester):
    
     def add_defaults(self, df):
         df = super().add_defaults(df)
-        df['Code'] = '08a-01'
-        df['Publisher'] = 'Illinois State Geological Survey'
-        df['Local Collection'] = 'Illinois Geospatial Data Clearinghouse'
+        df['Code'] = '02a-01'
+        # df['Creator'] = 'Illinois State Geological Survey'
+        df['Publisher'] = 'Illinois Geospatial Data Clearinghouse'
         df['Language'] = 'eng'
         df['Is Part Of'] = '02a-01'
         df['Member Of'] = 'ba5cc745-21c5-4ae9-954b-72dd8db6815a'
