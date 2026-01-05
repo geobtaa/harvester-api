@@ -101,7 +101,7 @@ class SocrataHarvester(BaseHarvester):
         today = time.strftime("%Y-%m-%d")
 
         # ---------- provenance fields for harvested dataset rows ----------
-        df["Source Platform"] = "Socrata"
+        df["Website Platform"] = "Socrata"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_socrata"
         df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
