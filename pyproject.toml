@@ -15,6 +15,7 @@ dependencies = [
   "requests",
   "pandas",
   "pyyaml",
+  "beautifulsoup4",
 
   # External platforms
   "hdx-python-api",

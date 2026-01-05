@@ -100,10 +100,9 @@ class ArcGISHarvester(BaseHarvester):
         today = time.strftime("%Y-%m-%d")
 
         # ---------- provenance fields for harvested dataset rows ----------
-        df["Source Platform"] = "ArcGIS Hub"
+        df["Website Platform"] = "ArcGIS Hub"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_arcgis_hub"
-        df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
         df["Provenance Statement"] = df.apply(
             lambda row: (
