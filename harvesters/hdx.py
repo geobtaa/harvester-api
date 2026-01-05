@@ -151,13 +151,12 @@ class HdxHarvester(BaseHarvester):
         today = time.strftime("%Y-%m-%d")
 
         # ---------- provenance fields for harvested dataset rows ----------
-        df["Source Platform"] = "CKAN"
+        df["Website Platform"] = "CKAN"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_hdx"
-        df["Supported Metadata Schema"] = "HDX CKAN API"
         df["Endpoint URL"] = "https://data.humdata.org/api/3/"
         df["Endpoint Description"] = "CKAN API"
-        df["Provenance Statement"] = df.apply(
+        df["Provenance"] = df.apply(
             lambda row: (
                 f"The metadata for this resource was last retrieved from Humanitarian Data Exchange on {today}."
             ),

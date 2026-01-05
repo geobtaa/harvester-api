@@ -104,9 +104,8 @@ class SocrataHarvester(BaseHarvester):
         df["Website Platform"] = "Socrata"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_socrata"
-        df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
-        df["Provenance Statement"] = df.apply(
+        df["Provenance"] = df.apply(
             lambda row: (
                 f"The metadata for this resource was last retrieved from "
                 f"{row.get('Publisher', ' Open Data Portal')} on {today}."

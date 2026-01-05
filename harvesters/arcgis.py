@@ -104,7 +104,7 @@ class ArcGISHarvester(BaseHarvester):
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_arcgis_hub"
         df["Endpoint Description"] = "DCAT API"
-        df["Provenance Statement"] = df.apply(
+        df["Provenance"] = df.apply(
             lambda row: (
                 f"The metadata for this resource was last retrieved from "
                 f"{row.get('Publisher', ' ArcGIS Hub')} on {today}."
