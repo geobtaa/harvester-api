@@ -24,8 +24,8 @@ dependencies = [
   "typing_extensions<4.15",
 ]
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
   "pytest",
   "ruff",
 ]
