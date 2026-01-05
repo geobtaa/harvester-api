@@ -119,17 +119,17 @@ class ArcGISHarvester(BaseHarvester):
             hub_df = pd.read_csv(hub_path, dtype=str).fillna("")
 
             # Ensure required columns exist
-            if "Status" not in hub_df.columns:
-                hub_df["Status"] = ""
+            if "Is Harvested" not in hub_df.columns:
+                hub_df["Is Harvested"] = ""
 
             # Convert to string for a reliable comparison
             indexed_ids = set(df["Is Part Of"].astype(str))
 
-            hub_df["Status"] = hub_df["ID"].apply(
-                lambda hub_id: "Indexed" if str(hub_id) in indexed_ids else "Not indexed"
+            hub_df["Is Harvested"] = hub_df["ID"].apply(
+                lambda hub_id: "True" if str(hub_id) in indexed_ids else "False"
             )
 
-            hub_df["Date Accessioned"] = today
+            hub_df["Last Harvested"] = today
 
 
             # ---------- merge ----------
