@@ -11,11 +11,6 @@ from harvesters.base import BaseHarvester
 from utils.distribution_writer import generate_secondary_table
 from utils.temporal_fields import infer_temporal_coverage_from_title, create_date_range
 
-from hdx.utilities.easy_logging import setup_logging
-from hdx.api.configuration import Configuration
-from hdx.data.dataset import Dataset
-
-Configuration.create(hdx_site="prod", user_agent="BTAA_Geoportal", hdx_read_only=True)
 
 
 class HdxHarvester(BaseHarvester):
