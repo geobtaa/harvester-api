@@ -137,13 +137,12 @@ class PasdaHarvester(BaseHarvester):
         today = time.strftime("%Y-%m-%d")
 
         # ---------- provenance fields for harvested dataset rows ----------
-        df["Source Platform"] = "HTML/JS"
+        df["Website Platform"] = "HTML/JS"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_pasda"
-        df["Supported Metadata Schema"] = "Local"
         df["Endpoint Description"] = "HTML"
         df["Endpoint URL"] = "https://www.pasda.psu.edu/uci/SearchResults.aspx?Keyword=."
-        df["Provenance Statement"] = f"The metadata for this resource was last retrieved from PASDA on {today}."
+        df["Provenance"] = f"The metadata for this resource was last retrieved from PASDA on {today}."
 
         return df
     

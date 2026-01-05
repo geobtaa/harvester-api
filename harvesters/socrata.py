@@ -104,9 +104,8 @@ class SocrataHarvester(BaseHarvester):
         df["Website Platform"] = "Socrata"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_socrata"
-        df["Supported Metadata Schema"] = "DCAT-US Schema v1.1"
         df["Endpoint Description"] = "DCAT API"
-        df["Provenance Statement"] = df.apply(
+        df["Provenance"] = df.apply(
             lambda row: (
                 f"The metadata for this resource was last retrieved from "
                 f"{row.get('Publisher', ' Open Data Portal')} on {today}."
@@ -121,17 +120,17 @@ class SocrataHarvester(BaseHarvester):
             hub_df = pd.read_csv(hub_path, dtype=str).fillna("")
 
             # Ensure required columns exist
-            if "Status" not in hub_df.columns:
-                hub_df["Status"] = ""
+            if "Is Harvested" not in hub_df.columns:
+                hub_df["Is Harvested"] = ""
 
             # Convert to string for a reliable comparison
             indexed_ids = set(df["Is Part Of"].astype(str))
 
-            hub_df["Status"] = hub_df["ID"].apply(
-                lambda website_id: "Indexed" if str(website_id) in indexed_ids else "Not indexed"
+            hub_df["Is Harvested"] = hub_df["ID"].apply(
+                lambda website_id: "true" if str(website_id) in indexed_ids else "false"
             )
 
-            hub_df["Date Accessioned"] = today
+            hub_df["Last Harvested"] = today
 
 
             # ---------- merge ----------

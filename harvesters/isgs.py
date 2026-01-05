@@ -197,15 +197,14 @@ class IsgsHarvester(BaseHarvester):
         today = datetime.now().strftime("%Y-%m-%d")
 
         # ---------- provenance fields for harvested dataset rows ----------
-        df["Source Platform"] = "Custom data portal"
+        df["Website Platform"] = "Custom data portal"
         df["Accrual Method"] = "Automated retrieval"
         df["Harvest Workflow"] = "py_isgs"
-        df["Supported Metadata Schema"] = "Local"
         df["Endpoint Description"] = "HTML"
         df["Endpoint URL"] = "https://clearinghouse.isgs.illinois.edu/data"
         
         # --- FIX #1: Use an f-string to insert the date ---
-        df["Provenance Statement"] = f"The metadata for this resource was last retrieved from ISGS on {today}."
+        df["Provenance"] = f"The metadata for this resource was last retrieved from ISGS on {today}."
 
         return df
     
