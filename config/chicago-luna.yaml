@@ -1,0 +1,8 @@
+name: Chicago Luna
+type: chicago-luna
+collection_url: https://luna.lib.uchicago.edu/luna/servlet/iiif/collection/s/sn5b01
+output_primary_csv: outputs/chicago_luna_primary.csv
+output_distributions_csv: outputs/chicago_luna_distributions.csv
+output_raw_csv: outputs/chicago_luna_raw.csv
+timeout: 60
+page_size: 50
