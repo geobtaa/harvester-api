@@ -16,6 +16,7 @@ dependencies = [
   "pandas",
   "pyyaml",
   "beautifulsoup4",
+  "playwright",
 
   # External platforms
   "hdx-python-api",

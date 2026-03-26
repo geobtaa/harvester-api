@@ -11,6 +11,9 @@ from harvesters.ogmWisc import OgmWiscHarvester
 from harvesters.hdx import HdxHarvester
 from harvesters.isgs import IsgsHarvester
 from harvesters.chicago_luna import ChicagoLunaHarvester
+from harvesters.hyrax import HyraxHarvester
+from harvesters.oai_qdc import OaiQdcHarvester
+
 
 HARVESTER_REGISTRY = {
     "arcgis": ArcGISHarvester,
@@ -20,6 +23,9 @@ HARVESTER_REGISTRY = {
     "hdx": HdxHarvester,
     "isgs": IsgsHarvester,
     "chicago-luna": ChicagoLunaHarvester,
+    "hyrax": HyraxHarvester,
+    "oai_qdc": OaiQdcHarvester,
+
 }
 
 
