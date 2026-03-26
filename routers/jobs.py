@@ -10,6 +10,7 @@ from harvesters.pasda import PasdaHarvester
 from harvesters.ogmWisc import OgmWiscHarvester
 from harvesters.hdx import HdxHarvester
 from harvesters.isgs import IsgsHarvester
+from harvesters.hyrax import HyraxHarvester
 from harvesters.oai_qdc import OaiQdcHarvester
 
 HARVESTER_REGISTRY = {
@@ -19,6 +20,7 @@ HARVESTER_REGISTRY = {
     "ogmWisc": OgmWiscHarvester,
     "hdx": HdxHarvester,
     "isgs": IsgsHarvester,
+    "hyrax": HyraxHarvester,
     "oai_qdc": OaiQdcHarvester,
 }
 
