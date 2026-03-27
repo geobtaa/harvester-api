@@ -28,8 +28,10 @@ class ChicagoLunaHarvester(BaseHarvester):
         "Title",
         "Description",
         "Creator",
+        "Keyword",
         "Access Rights",
         "Resource Class",
+        "Resource Type",
         "Format",
         "Language",
         "Publisher",
@@ -121,6 +123,7 @@ class ChicagoLunaHarvester(BaseHarvester):
 
     def add_defaults(self, df):
         df = super().add_defaults(df)
+        df["Code"] = df.get("Code", "12d-00")
         df["Member Of"] = df.get("Member Of", "64bd8c4c-8e60-4956-b43d-bdc3f93db488")
         df["Is Part Of"] = df.get("Is Part Of", "")
         return df
@@ -283,8 +286,12 @@ class ChicagoLunaHarvester(BaseHarvester):
         ]
         row["Description"] = self._join_pipe_values(description_parts)
         row["Creator"] = self._series_or_default(df, "creator").iloc[0]
+        row["Keyword"] = self._series_or_default(df, "subject").iloc[0]
         row["Access Rights"] = "Public"
         row["Resource Class"] = "Maps"
+        row["Resource Type"] = self.chicago_luna_clean_resource_type(
+            self._series_or_default(df, "type_text").iloc[0]
+        )
         row["Format"] = "JPEG"
         row["Language"] = self.chicago_luna_detect_language(row["Title"])
         row["Publisher"] = self.chicago_luna_clean_publisher(
@@ -404,6 +411,26 @@ class ChicagoLunaHarvester(BaseHarvester):
 
             if clean_part:
                 values.append(clean_part)
+
+        return self._join_pipe_values(values)
+
+    def chicago_luna_clean_resource_type(self, type_text):
+        values = []
+        for part in str(type_text or "").split("|"):
+            clean_part = part.strip()
+            if not clean_part:
+                continue
+
+            clean_part = clean_part.split("--", 1)[0].strip()
+            clean_part = clean_part.replace(".", "").strip()
+            if not clean_part:
+                continue
+
+            lowered = clean_part.lower()
+            if lowered in {"cartographic", "maps"}:
+                continue
+
+            values.append(clean_part)
 
         return self._join_pipe_values(values)
 
