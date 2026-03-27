@@ -156,7 +156,6 @@ class ChicagoLunaHarvester(BaseHarvester):
             today = time.strftime("%Y-%m-%d")
             output_dir = "outputs"
             os.makedirs(output_dir, exist_ok=True)
-
             raw_filename = os.path.join(output_dir, f"{today}_{os.path.basename(raw_out)}")
             raw_df = self.raw_canvas_df.copy()
             raw_df.to_csv(raw_filename, index=False, encoding="utf-8")
@@ -286,7 +285,7 @@ class ChicagoLunaHarvester(BaseHarvester):
         row["Creator"] = self._series_or_default(df, "creator").iloc[0]
         row["Access Rights"] = "Public"
         row["Resource Class"] = "Maps"
-        row["Format"] = "Image"
+        row["Format"] = "JPEG"
         row["Language"] = self.chicago_luna_detect_language(row["Title"])
         row["Publisher"] = self.chicago_luna_clean_publisher(
             self._series_or_default(df, "publisher_text").replace("", pd.NA).fillna("").iloc[0]
@@ -302,7 +301,7 @@ class ChicagoLunaHarvester(BaseHarvester):
         row["Spatial Coverage"] = self.chicago_luna_clean_spatial_coverage(
             self._series_or_default(df, "coverage_text").iloc[0]
         )
-        row["Bounding Box"] = ""
+        row["Bounding Box"] = self._series_or_default(df, "temp-Bbox").iloc[0]
         row["Spatial Resolution as Text"] = self._series_or_default(
             df, "Spatial Resolution as Text"
         ).iloc[0]
@@ -390,9 +389,16 @@ class ChicagoLunaHarvester(BaseHarvester):
             if not clean_part:
                 continue
 
-            segments = [segment.strip(" .;,") for segment in clean_part.split("--") if segment.strip(" .;,")]
-            if len(segments) >= 3 and segments[0].lower() == "united states":
-                clean_part = "--".join(segments[1:])
+            normalized = clean_part.replace("Unitd States", "United States")
+            segments = [segment.strip(" .;,") for segment in normalized.split("--") if segment.strip(" .;,")]
+
+            if segments and segments[0].lower() == "united states":
+                segments = segments[1:]
+
+            segments = [self.chicago_luna_normalize_place_segment(segment) for segment in segments]
+
+            if segments == ["Illinois", "Cook County", "Chicago"]:
+                clean_part = "Illinois--Cook County"
             else:
                 clean_part = "--".join(segments)
 
@@ -400,6 +406,13 @@ class ChicagoLunaHarvester(BaseHarvester):
                 values.append(clean_part)
 
         return self._join_pipe_values(values)
+
+    def chicago_luna_normalize_place_segment(self, segment):
+        text = str(segment or "").strip()
+        lowered = text.lower()
+        if lowered == "hicago":
+            return "Chicago"
+        return text
 
     def chicago_luna_detect_language(self, title):
         text = str(title or "").strip().lower()
